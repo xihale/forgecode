@@ -125,7 +125,14 @@ impl Display for ZshRPrompt {
             };
 
             if active {
-                write!(f, " {}{}", prefix, num.zsh().fg(ZshColor::WHITE).bold())?;
+                let mut token_str = format!("{}{}", prefix, num);
+                if let Some(limit) = self.context_length
+                    && limit > 0
+                {
+                    let pct = (*count * 100).checked_div(limit as usize).unwrap_or(0);
+                    token_str.push_str(&format!(" ({}%)", pct));
+                }
+                write!(f, " {}", token_str.zsh().fg(ZshColor::WHITE).bold())?;
             }
         }
 
@@ -136,6 +143,16 @@ impl Display for ZshRPrompt {
             let converted_cost = cost * self.conversion_ratio;
             let cost_str = format!("{}{:.2}", self.currency_symbol, converted_cost);
             write!(f, " {}", cost_str.zsh().fg(ZshColor::GREEN).bold())?;
+        }
+
+        // Add effort
+        if let Some(ref effort) = self.effort {
+            let styled = if active {
+                effort.short_name().zsh().fg(ZshColor::YELLOW).bold()
+            } else {
+                effort.short_name().zsh().fg(ZshColor::DIMMED)
+            };
+            write!(f, " [{}]", styled)?;
         }
 
         // Add model

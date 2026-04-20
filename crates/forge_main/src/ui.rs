@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use console::style;
 use convert_case::{Case, Casing};
+use crossterm::event::{self, Event as CrosstermEvent, KeyCode, KeyModifiers};
 use forge_api::{
     API, AgentId, AnyProvider, ApiKeyRequest, AuthContextRequest, AuthContextResponse, ChatRequest,
     ChatResponse, CodeRequest, ConfigOperation, Conversation, ConversationId, DeviceCodeRequest,
@@ -41,6 +42,7 @@ use crate::error::UIError;
 use crate::info::Info;
 use crate::input::Console;
 use crate::model::{AppCommand, ForgeCommandManager};
+use forge_api::Effort;
 use crate::porcelain::Porcelain;
 use crate::prompt::ForgePrompt;
 use crate::state::UIState;
@@ -49,7 +51,7 @@ use crate::sync_display::SyncProgressDisplay;
 use crate::title_display::TitleDisplayExt;
 use crate::tools_display::format_tools;
 use crate::update::on_update;
-use crate::utils::humanize_time;
+use crate::utils::{humanize_number, humanize_time};
 use crate::zsh::ZshRPrompt;
 use crate::{TRACKER, banner, tracker};
 
@@ -194,6 +196,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
 
         Ok(rows)
     }
+    }
 
     /// Displays banner only if user is in interactive mode.
     fn display_banner(&self) -> Result<()> {
@@ -295,7 +298,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         })
     }
 
-    async fn prompt(&self) -> Result<AppCommand> {
+    async fn prompt(&mut self) -> Result<AppCommand> {
         // Get usage from current conversation if available.
         // Use the last message's usage for token count (context window size),
         // but replace cost with the accumulated session cost so the cost
@@ -1747,6 +1750,9 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         // Fetch model (resolved with default model if unset)
         let model = self.get_agent_model(agent.clone()).await;
 
+        // Fetch context length if model is present
+        let context_length = self.get_context_length(model.as_ref()).await;
+
         // Fetch agent-specific provider or default provider if unset
         let agent_provider = self.get_provider(agent.clone()).await.ok();
 
@@ -1792,9 +1798,9 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
 
         // Add conversation information if available
         if let Some(conversation) = conversation {
-            info = info.extend(Info::from(&conversation));
+            info = info.add_conversation(&conversation, context_length);
         } else {
-            info = info.extend(Info::new().add_title("CONVERSATION").add_key("ID"));
+            info = info.add_title("CONVERSATION").add_key("ID");
         }
 
         if porcelain {
@@ -2302,13 +2308,61 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
 
         Ok(false)
     }
+    async fn cycle_reasoning_effort(&mut self) -> Result<()> {
+        let agent = self.api.get_active_agent().await;
+        let model_id = self.get_agent_model(agent).await;
+
+        let supported_efforts = if let Some(mid) = model_id {
+            self.api
+                .get_models()
+                .await
+                .ok()
+                .and_then(|models| {
+                    models
+                        .into_iter()
+                        .find(|m| m.id == mid)
+                        .map(|m| m.reasoning_efforts())
+                })
+                .unwrap_or_default()
+        } else {
+            vec![]
+        };
+
+        if supported_efforts.is_empty() {
+            return Ok(());
+        }
+
+        let current = self.api.get_reasoning_effort().await?.unwrap_or(Effort::Medium);
+
+        let next = if let Some(pos) = supported_efforts.iter().position(|e| e == &current) {
+            supported_efforts[(pos + 1) % supported_efforts.len()].clone()
+        } else {
+            supported_efforts.first().cloned().unwrap_or(Effort::Medium)
+        };
+
+        self.api
+            .update_config(vec![ConfigOperation::SetReasoningEffort(next.clone())])
+            .await?;
+        self.writeln_title(TitleFormat::action(format!(
+            "Reasoning effort set to {}",
+            next.to_string().bold()
+        )))?;
+        Ok(())
+    }
+
     async fn on_compaction(&mut self) -> Result<(), anyhow::Error> {
         let conversation_id = self.init_conversation().await?;
         let compaction_result = self.api.compact_conversation(&conversation_id).await?;
         let token_reduction = compaction_result.token_reduction_percentage();
         let message_reduction = compaction_result.message_reduction_percentage();
         let content = TitleFormat::action(format!(
-            "Context size reduced by {token_reduction:.1}% (tokens), {message_reduction:.1}% (messages)"
+            "Context size reduced from {} to {} tokens ({:.1}%), from {} to {} messages ({:.1}%)",
+            humanize_number(compaction_result.original_tokens),
+            humanize_number(compaction_result.compacted_tokens),
+            token_reduction,
+            compaction_result.original_messages,
+            compaction_result.compacted_messages,
+            message_reduction
         ));
         self.writeln_title(content)?;
         Ok(())
@@ -2340,6 +2394,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
     ///   this always writes to the config).
     async fn on_reasoning_effort_selection(&mut self, global: bool) -> anyhow::Result<()> {
         use std::str::FromStr;
+
 
         let prompt = if global {
             "Config Reasoning Effort"
@@ -3902,6 +3957,22 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         let mut writer = StreamingWriter::new(self.spinner.clone(), self.api.clone());
 
         while let Some(message) = stream.next().await {
+            // Check for key events during streaming
+            if event::poll(Duration::from_millis(0)).unwrap_or(false) {
+                if let Ok(CrosstermEvent::Key(key)) = event::read() {
+                    if key.code == KeyCode::Char('t')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        self.cycle_reasoning_effort().await?;
+                    }
+                    if key.code == KeyCode::Char('g')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        writer.toggle_thinking()?;
+                    }
+                }
+            }
+
             match message {
                 Ok(message) => self.handle_chat_response(message, &mut writer).await?,
                 Err(err) => {
@@ -4150,7 +4221,12 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
     async fn on_show_conv_info(&mut self, conversation: Conversation) -> anyhow::Result<()> {
         self.spinner.start(Some("Loading Summary"))?;
 
-        let info = Info::default().extend(&conversation);
+        // Fetch context length
+        let agent = self.api.get_active_agent().await;
+        let model = self.get_agent_model(agent).await;
+        let context_length = self.get_context_length(model.as_ref()).await;
+
+        let info = Info::default().add_conversation(&conversation, context_length);
         self.writeln(info)?;
         self.spinner.stop(None)?;
 
@@ -4285,8 +4361,13 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             None
         };
 
+        // Fetch context length
+        let agent = self.api.get_active_agent().await;
+        let model = self.get_agent_model(agent).await;
+        let context_length = self.get_context_length(model.as_ref()).await;
+
         let mut info = if let Some(usage) = conversation_usage {
-            Info::from(&usage)
+            Info::new().add_usage(&usage, context_length)
         } else {
             Info::new()
         };
@@ -4510,6 +4591,12 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             async { self.api.get_reasoning_effort().await.ok().flatten() }
         );
 
+        // Fetch context length if model_id is present
+        let context_length = self.get_context_length(model_id.as_ref()).await;
+
+        // Fetch reasoning effort
+        let effort = self.api.get_reasoning_effort().await.ok().flatten();
+
         // Calculate total cost including related conversations
         let cost = if let Some(ref conv) = conversation {
             let related_conversations = self.fetch_related_conversations(conv).await;
@@ -4540,6 +4627,8 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             .agent(agent_id)
             .model(model_id)
             .token_count(conversation.and_then(|conversation| conversation.token_count()))
+            .context_length(context_length)
+            .effort(effort)
             .cost(cost)
             .reasoning_effort(reasoning_effort)
             .terminal_width(terminal_width)

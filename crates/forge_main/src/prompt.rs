@@ -4,11 +4,13 @@ use std::path::PathBuf;
 
 use convert_case::{Case, Casing};
 use derive_setters::Setters;
+
 use forge_api::{AgentId, Effort, ModelId, Usage};
 use nu_ansi_term::{Color, Style};
 use reedline::{Prompt, PromptHistorySearchStatus};
 
 use crate::display_constants::markers;
+use crate::editor::EffortState;
 use crate::utils::humanize_number;
 
 // Constants
@@ -154,7 +156,13 @@ impl Prompt for ForgePrompt {
                 forge_api::TokenCount::Actual(_) => "",
                 forge_api::TokenCount::Approx(_) => "~",
             };
-            let count_str = format!("{}{}", prefix, humanize_number(*tokens));
+            let mut count_str = format!("{}{}", prefix, humanize_number(*tokens));
+            if let Some(limit) = self.context_length
+                && limit > 0
+            {
+                let pct = (*tokens * 100).checked_div(limit as usize).unwrap_or(0);
+                count_str.push_str(&format!(" ({}%)", pct));
+            }
             write!(
                 result,
                 " {}",
@@ -172,6 +180,37 @@ impl Prompt for ForgePrompt {
                 result,
                 " {}",
                 Style::new().bold().fg(Color::Green).paint(&cost_str)
+            )
+            .unwrap();
+        }
+
+        // Reasoning effort
+        let (effort, supported_count) = if let Some(ref state) = self.effort_state {
+            let state = state.lock().ok();
+            (
+                state.as_ref().and_then(|s| s.current.clone()).or(self.effort.clone()),
+                state.as_ref().map(|s| s.supported.len()),
+            )
+        } else {
+            (self.effort.clone(), None)
+        };
+
+        if let Some(ref effort) = effort
+            && !matches!(effort, Effort::None)
+            && supported_count.unwrap_or(2) > 1
+        {
+            let color = if active {
+                Color::Yellow
+            } else {
+                Color::DarkGray
+            };
+            write!(
+                result,
+                " {}",
+                Style::new()
+                    .bold()
+                    .fg(color)
+                    .paint(format!("[{}]", effort.short_name()))
             )
             .unwrap();
         }

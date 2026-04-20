@@ -1429,6 +1429,7 @@ mod tests {
                 tools_supported: None,
                 supports_parallel_tool_calls: None,
                 supports_reasoning: None,
+                supported_reasoning_efforts: None,
                 input_modalities: vec![InputModality::Text],
             },
             Model {
@@ -1439,6 +1440,7 @@ mod tests {
                 tools_supported: None,
                 supports_parallel_tool_calls: None,
                 supports_reasoning: None,
+                supported_reasoning_efforts: None,
                 input_modalities: vec![InputModality::Text],
             },
         ];
