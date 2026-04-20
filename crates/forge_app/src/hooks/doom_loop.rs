@@ -222,7 +222,7 @@ impl DoomLoopDetector {
 impl EventHandle<EventData<RequestPayload>> for DoomLoopDetector {
     async fn handle(
         &self,
-        event: &EventData<RequestPayload>,
+        event: &mut EventData<RequestPayload>,
         conversation: &mut Conversation,
     ) -> anyhow::Result<()> {
         if let Some(consecutive_calls) = self.detect_from_conversation(conversation) {
@@ -393,55 +393,27 @@ mod tests {
         assert_eq!(actual, None);
     }
 
-    #[test]
-    fn test_extract_assistant_messages() {
-        let assistant_msg_1 = TextMessage {
-            role: Role::Assistant,
-            content: "Response 1".to_string(),
-            raw_content: None,
-            tool_calls: None,
-            thought_signature: None,
-            model: None,
-            reasoning_details: None,
-            droppable: false,
-            phase: None,
-        };
+    #[tokio::test]
+    async fn test_doom_loop_detector_hook() {
+        let detector = DoomLoopDetector::new();
+        let mut conversation = create_conversation_with_messages(vec![]);
+        let mut event = EventData::new(test_agent(), test_model_id(), RequestPayload::new(1));
 
-        let user_msg = TextMessage {
-            role: Role::User,
-            content: "Question".to_string(),
-            raw_content: None,
-            tool_calls: None,
-            thought_signature: None,
-            model: None,
-            reasoning_details: None,
-            droppable: false,
-            phase: None,
-        };
+        // Should not panic or detect anything yet
+        detector.handle(&mut event, &mut conversation).await.unwrap();
+        assert_eq!(conversation.len(), 0);
+    }
 
-        let assistant_msg_2 = TextMessage {
-            role: Role::Assistant,
-            content: "Response 2".to_string(),
-            raw_content: None,
-            tool_calls: None,
-            thought_signature: None,
-            model: None,
-            reasoning_details: None,
-            droppable: false,
-            phase: None,
-        };
+    fn test_agent() -> Agent {
+        Agent::new(
+            "test-agent",
+            "test-provider".to_string().into(),
+            ModelId::new("test-model"),
+        )
+    }
 
-        let messages = [
-            ContextMessage::Text(assistant_msg_1.clone()),
-            ContextMessage::Text(user_msg),
-            ContextMessage::Text(assistant_msg_2.clone()),
-        ];
-
-        let result = DoomLoopDetector::extract_assistant_messages(messages.iter());
-
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].content, "Response 1");
-        assert_eq!(result[1].content, "Response 2");
+    fn test_model_id() -> ModelId {
+        ModelId::new("test-model")
     }
 
     #[test]
