@@ -10,8 +10,8 @@ use crate::apply_tunable_parameters::ApplyTunableParameters;
 use crate::changed_files::ChangedFiles;
 use crate::dto::ToolsOverview;
 use crate::hooks::{
-    CompactionHandler, DoomLoopDetector, PendingTodosHandler, TitleGenerationHandler,
-    TracingHandler,
+    CompactionHandler, DoomLoopDetector, ExternalHookHandler, PendingTodosHandler,
+    TitleGenerationHandler, TracingHandler,
 };
 use crate::init_conversation_metrics::InitConversationMetrics;
 use crate::orch::Orchestrator;
@@ -147,6 +147,7 @@ impl<S: Services + EnvironmentInfra<Config = forge_config::ForgeConfig>> ForgeAp
         // Create the orchestrator with all necessary dependencies
         let tracing_handler = TracingHandler::new();
         let title_handler = TitleGenerationHandler::new(services.clone());
+        let external_handler = ExternalHookHandler::new();
 
         // Build the on_end hook, conditionally adding PendingTodosHandler based on
         // config
@@ -167,7 +168,7 @@ impl<S: Services + EnvironmentInfra<Config = forge_config::ForgeConfig>> ForgeAp
                     .clone()
                     .and(CompactionHandler::new(agent.clone(), environment.clone())),
             )
-            .on_toolcall_start(tracing_handler.clone())
+            .on_toolcall_start(tracing_handler.clone().and(external_handler))
             .on_toolcall_end(tracing_handler)
             .on_end(on_end_hook);
 
