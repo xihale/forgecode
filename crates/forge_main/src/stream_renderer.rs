@@ -97,7 +97,6 @@ pub struct StreamingWriter<P: ConsoleWriter> {
     active: Option<ActiveRenderer<P>>,
     spinner: SharedSpinner<P>,
     printer: Arc<P>,
-    show_thinking: bool,
 }
 
 impl<P: ConsoleWriter + 'static> StreamingWriter<P> {
@@ -108,22 +107,7 @@ impl<P: ConsoleWriter + 'static> StreamingWriter<P> {
             active: None,
             spinner,
             printer,
-            show_thinking: true,
         }
-    }
-
-    /// Toggles the visual display of the thinking/reasoning process.
-    pub fn toggle_thinking(&mut self) -> Result<()> {
-        self.show_thinking = !self.show_thinking;
-        if !self.show_thinking
-            && self
-                .active
-                .as_ref()
-                .is_some_and(|a| a.style == Style::Dimmed)
-        {
-            self.finish()?;
-        }
-        Ok(())
     }
 
     /// Writes markdown content with normal styling.
@@ -133,9 +117,6 @@ impl<P: ConsoleWriter + 'static> StreamingWriter<P> {
 
     /// Writes markdown content with dimmed styling (for reasoning blocks).
     pub fn write_dimmed(&mut self, text: &str) -> Result<()> {
-        if !self.show_thinking {
-            return Ok(());
-        }
         self.write_styled(text, Style::Dimmed)
     }
 

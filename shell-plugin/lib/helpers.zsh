@@ -208,6 +208,11 @@ function _forge_start_background_sync() {
 # Start background update check if not already running
 # Mirrors the background sync pattern to silently check for and apply updates
 function _forge_start_background_update() {
+    # Skip if FORGE_UPDATE_DISABLED is set
+    if [[ -n "$FORGE_UPDATE_DISABLED" ]]; then
+        return 0
+    fi
+
     {
         # Run update check in background
         # Close all output streams immediately to prevent any flashing

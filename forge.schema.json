@@ -905,7 +905,8 @@
       "enum": [
         "daily",
         "weekly",
-        "always"
+        "always",
+        "never"
       ]
     },
     "double": {

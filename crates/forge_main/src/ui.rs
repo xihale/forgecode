@@ -3875,11 +3875,6 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                     {
                         self.cycle_reasoning_effort().await?;
                     }
-                    if key.code == KeyCode::Char('g')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                    {
-                        writer.toggle_thinking()?;
-                    }
                 }
             }
 

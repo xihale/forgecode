@@ -120,7 +120,9 @@ impl<H: HttpInfra> OpenAIResponsesProvider<H> {
         // Mirror codex-rs conversation continuity headers by sending:
         // - x-client-request-id: conversation id
         // - session_id: conversation id
-        if self.provider.id == forge_domain::ProviderId::CODEX {
+        if self.provider.id == forge_domain::ProviderId::CODEX
+            || self.provider.id == forge_domain::ProviderId::OPENAI_RESPONSES_COMPATIBLE
+        {
             if let Some(conversation_id) = conversation_id {
                 headers.push((
                     "x-client-request-id".to_string(),
@@ -154,7 +156,9 @@ impl<T: HttpInfra> OpenAIResponsesProvider<T> {
         request.model = Some(model.as_str().to_string());
 
         // Apply Codex-specific request adjustments via the transformer pipeline.
-        if self.provider.id == forge_domain::ProviderId::CODEX {
+        if self.provider.id == forge_domain::ProviderId::CODEX
+            || self.provider.id == forge_domain::ProviderId::OPENAI_RESPONSES_COMPATIBLE
+        {
             use forge_domain::Transformer;
             request = super::codex_transformer::CodexTransformer.transform(request);
         }
@@ -177,7 +181,9 @@ impl<T: HttpInfra> OpenAIResponsesProvider<T> {
         // `InvalidContentType`. We bypass it by making a direct HTTP POST
         // and parsing SSE from the raw byte stream using
         // eventsource-stream, exactly like the AI SDK does.
-        if self.provider.id == forge_domain::ProviderId::CODEX {
+        if self.provider.id == forge_domain::ProviderId::CODEX
+            || self.provider.id == forge_domain::ProviderId::OPENAI_RESPONSES_COMPATIBLE
+        {
             return self.chat_codex_stream(headers, json_bytes).await;
         }
 
@@ -391,7 +397,7 @@ impl<F: HttpInfra + EnvironmentInfra<Config = forge_config::ForgeConfig> + 'stat
         match provider.models().cloned() {
             Some(forge_domain::ModelSource::Hardcoded(models)) => Ok(models),
             Some(forge_domain::ModelSource::Url(url)) => {
-                let provider_client = OpenAIResponsesProvider::new(provider, self.infra.clone());
+                let provider_client = OpenAIResponsesProvider::new(provider.clone(), self.infra.clone());
                 let headers = create_headers(provider_client.get_headers());
                 let response = self
                     .infra
@@ -418,11 +424,202 @@ impl<F: HttpInfra + EnvironmentInfra<Config = forge_config::ForgeConfig> + 'stat
                     serde_json::from_str(&response_text)
                         .with_context(|| format_http_context(None, "GET", &url))
                         .with_context(|| "Failed to deserialize models response")?;
-                Ok(data.data.into_iter().map(Into::into).collect())
+
+                let mut remote_models: Vec<Model> = data.data.into_iter().map(Into::into).collect();
+
+                // If this is a compatible provider, enrich remote models with standard
+                // Codex metadata based on their ID.
+                if provider.id == forge_domain::ProviderId::OPENAI_RESPONSES_COMPATIBLE {
+                    let standard_models = get_codex_models();
+                    for model in &mut remote_models {
+                        if let Some(standard) = standard_models
+                            .iter()
+                            .find(|m| m.id.as_str() == model.id.as_str())
+                        {
+                            // Align metadata (context length, tools, reasoning)
+                            model.name = standard.name.clone();
+                            model.description = standard.description.clone();
+                            model.context_length = standard.context_length;
+                            model.tools_supported = standard.tools_supported;
+                            model.supports_parallel_tool_calls =
+                                standard.supports_parallel_tool_calls;
+                            model.supports_reasoning = standard.supports_reasoning;
+                            model.supported_reasoning_efforts =
+                                standard.supported_reasoning_efforts.clone();
+                            model.input_modalities = standard.input_modalities.clone();
+                        }
+                    }
+                }
+
+                Ok(remote_models)
             }
             None => Ok(vec![]),
         }
     }
+}
+
+/// Returns the standard list of Codex models with their hardcoded metadata.
+/// This matches the definitions in provider.json for the 'codex' provider.
+fn get_codex_models() -> Vec<Model> {
+    use forge_app::domain::{Effort, InputModality};
+    vec![
+        Model {
+            id: ModelId::new("gpt-5.4-mini"),
+            name: Some("GPT-5.4 Mini".to_string()),
+            description: Some(
+                "Strongest mini model yet for coding, computer use, and subagents".to_string(),
+            ),
+            context_length: Some(400_000),
+            tools_supported: Some(true),
+            supports_parallel_tool_calls: Some(true),
+            supports_reasoning: Some(true),
+            supported_reasoning_efforts: Some(vec![
+                Effort::Low,
+                Effort::Medium,
+                Effort::High,
+                Effort::XHigh,
+            ]),
+            input_modalities: vec![InputModality::Text, InputModality::Image],
+        },
+        Model {
+            id: ModelId::new("gpt-5.4"),
+            name: Some("GPT-5.4".to_string()),
+            description: Some("Latest frontier model for complex professional work".to_string()),
+            context_length: Some(272_000),
+            tools_supported: Some(true),
+            supports_parallel_tool_calls: Some(true),
+            supports_reasoning: Some(true),
+            supported_reasoning_efforts: Some(vec![
+                Effort::Low,
+                Effort::Medium,
+                Effort::High,
+                Effort::XHigh,
+            ]),
+            input_modalities: vec![InputModality::Text, InputModality::Image],
+        },
+        Model {
+            id: ModelId::new("gpt-5.3-codex-spark"),
+            name: Some("GPT-5.3 Codex Spark".to_string()),
+            description: Some(
+                "Text-only research preview model optimized for near-instant, real-time coding iteration."
+                    .to_string(),
+            ),
+            context_length: Some(128_000),
+            tools_supported: Some(true),
+            supports_parallel_tool_calls: Some(true),
+            supports_reasoning: Some(true),
+            supported_reasoning_efforts: Some(vec![
+                Effort::Low,
+                Effort::Medium,
+                Effort::High,
+                Effort::XHigh,
+            ]),
+            input_modalities: vec![InputModality::Text],
+        },
+        Model {
+            id: ModelId::new("gpt-5.3-codex"),
+            name: Some("GPT-5.3 Codex".to_string()),
+            description: Some(
+                "Latest GPT-5.3 Codex model optimized for agentic coding".to_string(),
+            ),
+            context_length: Some(272_000),
+            tools_supported: Some(true),
+            supports_parallel_tool_calls: Some(true),
+            supports_reasoning: Some(true),
+            supported_reasoning_efforts: Some(vec![
+                Effort::Low,
+                Effort::Medium,
+                Effort::High,
+                Effort::XHigh,
+            ]),
+            input_modalities: vec![InputModality::Text, InputModality::Image],
+        },
+        Model {
+            id: ModelId::new("gpt-5.2-codex"),
+            name: Some("GPT-5.2 Codex".to_string()),
+            description: Some("Frontier agentic coding model".to_string()),
+            context_length: Some(272_000),
+            tools_supported: Some(true),
+            supports_parallel_tool_calls: Some(true),
+            supports_reasoning: Some(true),
+            supported_reasoning_efforts: Some(vec![
+                Effort::Low,
+                Effort::Medium,
+                Effort::High,
+                Effort::XHigh,
+            ]),
+            input_modalities: vec![InputModality::Text, InputModality::Image],
+        },
+        Model {
+            id: ModelId::new("gpt-5.2"),
+            name: Some("GPT-5.2".to_string()),
+            description: Some(
+                "Frontier model with improvements across knowledge, reasoning and coding"
+                    .to_string(),
+            ),
+            context_length: Some(272_000),
+            tools_supported: Some(true),
+            supports_parallel_tool_calls: Some(true),
+            supports_reasoning: Some(true),
+            supported_reasoning_efforts: Some(vec![
+                Effort::Low,
+                Effort::Medium,
+                Effort::High,
+                Effort::XHigh,
+            ]),
+            input_modalities: vec![InputModality::Text, InputModality::Image],
+        },
+        Model {
+            id: ModelId::new("gpt-5.1-codex-max"),
+            name: Some("GPT-5.1 Codex Max".to_string()),
+            description: Some("Codex-optimized flagship for deep and fast reasoning".to_string()),
+            context_length: Some(272_000),
+            tools_supported: Some(true),
+            supports_parallel_tool_calls: Some(true),
+            supports_reasoning: Some(true),
+            supported_reasoning_efforts: Some(vec![
+                Effort::Low,
+                Effort::Medium,
+                Effort::High,
+                Effort::XHigh,
+            ]),
+            input_modalities: vec![InputModality::Text, InputModality::Image],
+        },
+        Model {
+            id: ModelId::new("gpt-5.1-codex"),
+            name: Some("GPT-5.1 Codex".to_string()),
+            description: Some("Optimized for codex agentic coding tasks".to_string()),
+            context_length: Some(272_000),
+            tools_supported: Some(true),
+            supports_parallel_tool_calls: Some(true),
+            supports_reasoning: Some(true),
+            supported_reasoning_efforts: Some(vec![
+                Effort::Low,
+                Effort::Medium,
+                Effort::High,
+                Effort::XHigh,
+            ]),
+            input_modalities: vec![InputModality::Text, InputModality::Image],
+        },
+        Model {
+            id: ModelId::new("gpt-5.1-codex-mini"),
+            name: Some("GPT-5.1 Codex Mini".to_string()),
+            description: Some(
+                "Fast and efficient GPT-5.1 Codex mini model for quick coding tasks".to_string(),
+            ),
+            context_length: Some(200_000),
+            tools_supported: Some(true),
+            supports_parallel_tool_calls: Some(true),
+            supports_reasoning: Some(true),
+            supported_reasoning_efforts: Some(vec![
+                Effort::Low,
+                Effort::Medium,
+                Effort::High,
+                Effort::XHigh,
+            ]),
+            input_modalities: vec![InputModality::Text, InputModality::Image],
+        },
+    ]
 }
 
 #[cfg(test)]
