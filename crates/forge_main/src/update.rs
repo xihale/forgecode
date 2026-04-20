@@ -71,6 +71,10 @@ fn should_check_for_updates(frequency: &UpdateFrequency) -> bool {
 
 /// Checks if there is an update available
 pub async fn on_update(api: Arc<impl API>, update: Option<&Update>) {
+    if std::env::var("FORGE_UPDATE_DISABLED").is_ok() {
+        return;
+    }
+
     let update = update.cloned().unwrap_or_default();
     let frequency = update.frequency.unwrap_or_default();
 
@@ -82,8 +86,12 @@ pub async fn on_update(api: Arc<impl API>, update: Option<&Update>) {
 
     // Check if version is development version, in which case we skip the update
     // check
-    if VERSION.contains("dev") || VERSION == "0.1.0" {
-        // Skip update for development version 0.1.0
+    if VERSION.contains("dev") || VERSION == "0.1.1" || VERSION == "0.1.0" {
+        // Skip update for development version 0.1.1 and 0.1.0
+        return;
+    }
+
+    if frequency == forge_config::UpdateFrequency::Never {
         return;
     }
 

@@ -724,7 +724,7 @@ mod tests {
     fn test_into_long() {
         let info = Info::new()
             .add_title("env")
-            .add_key_value("version", "0.1.0")
+            .add_key_value("version", "0.1.1")
             .add_key_value("shell", "zsh")
             .add_title("conversation")
             .add_key_value("id", "000-000-000")
@@ -738,7 +738,7 @@ mod tests {
             vec![
                 Some("env".into()),
                 Some("version".into()),
-                Some("0.1.0".into()),
+                Some("0.1.1".into()),
             ],
             vec![Some("env".into()), Some("shell".into()), Some("zsh".into())],
             vec![

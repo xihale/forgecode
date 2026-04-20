@@ -193,7 +193,7 @@ impl<F: forge_app::FileWriterInfra + 'static> ForgeHttpInfra<F> {
         headers.insert(
             "x-app-version",
             HeaderValue::from_str(format!("v{VERSION}").as_str())
-                .unwrap_or(HeaderValue::from_static("v0.1.0-dev")),
+                .unwrap_or(HeaderValue::from_static("v0.1.1-dev")),
         );
         headers.insert(
             "HTTP-Referer",

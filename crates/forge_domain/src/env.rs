@@ -31,7 +31,7 @@ pub enum ConfigOperation {
     SetReasoningEffort(Effort),
 }
 
-const VERSION: &str = match option_env!("APP_VERSION") {
+pub const VERSION: &str = match option_env!("APP_VERSION") {
     Some(val) => val,
     None => env!("CARGO_PKG_VERSION"),
 };
