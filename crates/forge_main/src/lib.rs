@@ -28,6 +28,9 @@ mod update;
 
 use std::sync::LazyLock;
 
+/// Application version, set by `build.rs` from git tags or `APP_VERSION` env var.
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub use cli::{Cli, ListCommand, ListCommandGroup, TopLevelCommand};
 pub use sandbox::Sandbox;
 pub use title_display::*;

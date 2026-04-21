@@ -210,17 +210,18 @@ impl Prompt for ForgePrompt {
             .unwrap();
         }
 
-        // Model with nerd font symbol
+        // Model with nerd font symbol (always colored — it's a static config
+        // identifier, not conversation state)
         if let Some(model) = self.model.as_ref() {
             let model_str = model.to_string();
             let short_model = model_str.split('/').next_back().unwrap_or(model.as_str());
             let model_label = format!("{MODEL_SYMBOL} {short_model}");
-            let color = if active {
-                Color::LightMagenta
-            } else {
-                Color::DarkGray
-            };
-            write!(result, " {}", Style::new().fg(color).paint(&model_label)).unwrap();
+            write!(
+                result,
+                " {}",
+                Style::new().fg(Color::LightMagenta).paint(&model_label)
+            )
+            .unwrap();
         }
 
         Cow::Owned(result)

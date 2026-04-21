@@ -127,19 +127,15 @@ impl Display for ZshRPrompt {
             write!(f, " [{}]", styled)?;
         }
 
-        // Add model
+        // Add model (always colored — it's a static config identifier, not
+        // conversation state)
         if let Some(ref model_id) = self.model {
             let model_id = if self.use_nerd_font {
                 format!("{MODEL_SYMBOL} {}", model_id)
             } else {
                 model_id.to_string()
             };
-            let styled = if active {
-                model_id.zsh().fg(ZshColor::CYAN)
-            } else {
-                model_id.zsh().fg(ZshColor::DIMMED)
-            };
-            write!(f, " {}", styled)?;
+            write!(f, " {}", model_id.zsh().fg(ZshColor::CYAN))?;
         }
 
         Ok(())
@@ -158,7 +154,7 @@ mod tests {
             .model(Some(ModelId::new("gpt-4")))
             .to_string();
 
-        let expected = " %B%F{240}\u{f167a} FORGE%f%b %F{240}\u{ec19} gpt-4%f";
+        let expected = " %B%F{240}\u{f167a} FORGE%f%b %F{134}\u{ec19} gpt-4%f";
         assert_eq!(actual, expected);
     }
 

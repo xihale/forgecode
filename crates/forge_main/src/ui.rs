@@ -262,9 +262,11 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
 
     async fn prompt(&mut self) -> Result<AppCommand> {
         // Get usage from current conversation if available.
-        // Use the last message's usage for token count (context window size),
-        // but replace cost with the accumulated session cost so the cost
-        // shown reflects the total spend rather than just the last request.
+        // Build a synthetic Usage that combines:
+        //   - token count from `token_count()` which falls back to an
+        //     approximation when the last message has zeroed tokens (e.g. after
+        //     compaction)
+        //   - accumulated cost across the entire session
         let usage = if let Some(conversation_id) = &self.state.conversation_id {
             self.api
                 .conversation(conversation_id)
@@ -272,9 +274,14 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 .ok()
                 .flatten()
                 .and_then(|conv| {
-                    conv.usage().map(|mut u| {
-                        u.cost = conv.accumulated_cost();
-                        u
+                    let token_count = conv.token_count()?;
+                    let cost = conv.accumulated_cost();
+                    Some(forge_api::Usage {
+                        total_tokens: token_count,
+                        prompt_tokens: forge_api::TokenCount::Actual(0),
+                        completion_tokens: forge_api::TokenCount::Actual(0),
+                        cached_tokens: forge_api::TokenCount::Actual(0),
+                        cost,
                     })
                 })
         } else {
