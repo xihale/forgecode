@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::reader::ConfigReader;
 use crate::writer::ConfigWriter;
 use crate::{
-    AutoDumpFormat, Compact, Decimal, HttpConfig, ModelConfig, ReasoningConfig, RetryConfig, Update,
+    AutoDumpFormat, Compact, DEFAULT_SHELL_BEHAVIOR_QUIET, DEFAULT_SHELL_BEHAVIOR_SYNC, Decimal,
+    HttpConfig, ModelConfig, ReasoningConfig, RetryConfig, ShellBehaviorConfig, Update,
 };
 
 /// Wire protocol a provider uses for chat completions.
@@ -207,6 +208,12 @@ pub struct ForgeConfig {
     /// individual agents.    
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<ModelConfig>,
+    /// Model and provider configuration used for shell mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shell: Option<ModelConfig>,
+    /// Behavior settings for shell-triggered prompt executions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shell_behavior: Option<ShellBehaviorConfig>,
     /// Model and provider configuration used for commit message generation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit: Option<ModelConfig>,
@@ -332,9 +339,18 @@ pub struct ForgeConfig {
 }
 
 impl ForgeConfig {
+    /// Returns shell-specific behavior settings with defaults applied.
+    pub fn shell_behavior_or_default(&self) -> crate::ShellBehaviorConfig {
+        self.shell_behavior
+            .clone()
+            .unwrap_or_else(|| crate::ShellBehaviorConfig {
+                quiet: DEFAULT_SHELL_BEHAVIOR_QUIET,
+                sync: DEFAULT_SHELL_BEHAVIOR_SYNC,
+            })
+    }
+
     /// Reads and merges configuration from all sources, returning the resolved
-    /// [`ForgeConfig`].
-    ///
+
     /// # Errors
     ///
     /// Returns an error if the config path cannot be resolved, the file cannot
