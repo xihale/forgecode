@@ -48,8 +48,8 @@ pub struct Model {
 impl Model {
     /// Returns the supported reasoning effort levels for this model.
     ///
-    /// This method prioritizes the explicitly defined `supported_reasoning_efforts` 
-    /// field. If that field is missing or empty, it uses the model's identity 
+    /// This method prioritizes the explicitly defined `supported_reasoning_efforts`
+    /// field. If that field is missing or empty, it uses the model's identity
     /// to determine a sensible set of levels if the model supports reasoning.
     pub fn reasoning_efforts(&self) -> Vec<Effort> {
         // 1. Prioritize explicit definition from the provider/config
@@ -79,7 +79,11 @@ impl Model {
         }
 
         // Anthropic Claude 3.7 / 4.5 family
-        if id.contains("claude-3-7") || id.contains("opus-4-5") || id.contains("sonnet-4-5") || id.contains("haiku-4-5") {
+        if id.contains("claude-3-7")
+            || id.contains("opus-4-5")
+            || id.contains("sonnet-4-5")
+            || id.contains("haiku-4-5")
+        {
             return vec![Effort::Low, Effort::Medium, Effort::High];
         }
 
