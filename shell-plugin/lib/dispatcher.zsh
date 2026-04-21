@@ -247,6 +247,10 @@ function forge-accept-line() {
         logout)
             _forge_action_logout "$input_text"
         ;;
+        paste-image|pi)
+            _forge_action_paste_image
+            return
+        ;;
         *)
             _forge_action_default "$user_action" "$input_text"
         ;;
