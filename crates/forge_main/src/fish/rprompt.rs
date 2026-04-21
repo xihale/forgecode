@@ -97,7 +97,14 @@ pub struct FishRPrompt {
     token_count: Option<TokenCount>,
     cost: Option<f64>,
     context_length: Option<u64>,
-    effort: Option<Effort>,
+    /// Currently configured reasoning effort level for the active model.
+    /// Rendered to the right of the model when set.
+    reasoning_effort: Option<Effort>,
+    /// Terminal width in columns, used to pick between the compact
+    /// three-letter label and the full-length uppercase label for
+    /// reasoning effort. When `None`, the prompt falls back to the
+    /// full-length form.
+    terminal_width: Option<usize>,
     /// Controls whether to render nerd font symbols. Defaults to `true`.
     #[setters(into)]
     use_nerd_font: bool,
@@ -128,7 +135,8 @@ impl Default for FishRPrompt {
             token_count: None,
             cost: None,
             context_length: None,
-            effort: None,
+            reasoning_effort: None,
+            terminal_width: None,
             use_nerd_font: true,
             currency_symbol: "\u{f155}".to_string(),
             conversion_ratio: 1.0,
@@ -138,6 +146,10 @@ impl Default for FishRPrompt {
 
 const AGENT_SYMBOL: &str = "\u{f167a}";
 const MODEL_SYMBOL: &str = "\u{ec19}";
+
+/// Terminal width (in columns) at which the reasoning effort label switches
+/// from the compact three-letter form to the full uppercase label.
+const WIDE_TERMINAL_THRESHOLD: usize = 100;
 
 impl Display for FishRPrompt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -190,14 +202,33 @@ impl Display for FishRPrompt {
             write!(f, " {}", cost_str.ansi().fg(AnsiColor::GREEN).bold())?;
         }
 
-        // Add effort
-        if let Some(ref effort) = self.effort {
-            let styled = if active {
-                effort.short_name().ansi().fg(AnsiColor::YELLOW).bold()
+        // Add reasoning effort (rendered to the right of the model).
+        // `Effort::None` is suppressed because it carries no useful information
+        // for the user to see in the prompt. Below `WIDE_TERMINAL_THRESHOLD`
+        // columns the label collapses to its first three characters so the
+        // prompt stays compact on narrow terminals; above the threshold the
+        // full uppercase label is rendered for readability.
+        if let Some(ref effort) = self.reasoning_effort
+            && !matches!(effort, Effort::None)
+        {
+            let is_wide =
+                self.terminal_width.unwrap_or(WIDE_TERMINAL_THRESHOLD) >= WIDE_TERMINAL_THRESHOLD;
+            let effort_label = if is_wide {
+                effort.to_string().to_uppercase()
             } else {
-                effort.short_name().ansi().fg(AnsiColor::DIMMED)
+                effort
+                    .to_string()
+                    .chars()
+                    .take(3)
+                    .collect::<String>()
+                    .to_uppercase()
             };
-            write!(f, " [{}]", styled)?;
+            let styled = if active {
+                effort_label.ansi().fg(AnsiColor::YELLOW)
+            } else {
+                effort_label.ansi().fg(AnsiColor::DIMMED)
+            };
+            write!(f, " {}", styled)?;
         }
 
         // Add model (always colored — it's a static config identifier, not
