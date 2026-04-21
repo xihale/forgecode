@@ -70,14 +70,18 @@ function _forge_action_default
     end
 
     # Execute the forge command directly with proper escaping
-    env FORGE_SHELL_PROMPT=1 _forge_exec_interactive -p "$input_text" --cid "$_FORGE_CONVERSATION_ID"
+    set -lx FORGE_SHELL_PROMPT 1
+    _forge_exec_interactive -p "$input_text" --cid "$_FORGE_CONVERSATION_ID"
 
     # Start background sync job if enabled and not already running
-    set -l shell_sync_enabled (env FORGE_SHELL_PROMPT=1 $_FORGE_BIN config get shell-behavior-sync 2>/dev/null)
+    set -l shell_sync_enabled (FORGE_SHELL_PROMPT=1 $_FORGE_BIN config get shell-behavior-sync 2>/dev/null)
     if test -n "$shell_sync_enabled"
-        env FORGE_SHELL_PROMPT=1 FORGE_SHELL_BEHAVIOR_SYNC="$shell_sync_enabled" _forge_start_background_sync
+        set -lx FORGE_SHELL_PROMPT 1
+        set -lx FORGE_SHELL_BEHAVIOR_SYNC "$shell_sync_enabled"
+        _forge_start_background_sync
     else
-        env FORGE_SHELL_PROMPT=1 _forge_start_background_sync
+        set -lx FORGE_SHELL_PROMPT 1
+        _forge_start_background_sync
     end
     # Start background update check
     _forge_start_background_update
