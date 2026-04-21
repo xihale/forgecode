@@ -365,6 +365,99 @@ pub fn setup_zsh_integration(
     })
 }
 
+/// Result of a teardown operation.
+#[derive(Debug)]
+pub struct TeardownResult {
+    /// Status message describing what was done.
+    pub message: String,
+    /// Path to backup file if one was created.
+    pub backup_path: Option<PathBuf>,
+}
+
+/// Teardowns ZSH integration by removing the forge block from .zshrc.
+///
+/// Finds the `# >>> forge initialize >>>` / `# <<< forge initialize <<<`
+/// markers and removes everything between them (inclusive). Creates a backup
+/// before modifying the file.
+///
+/// # Errors
+///
+/// Returns error if:
+/// - The HOME environment variable is not set
+/// - The .zshrc file cannot be read or written
+/// - No forge markers are found
+/// - A backup of the existing .zshrc cannot be created
+pub fn teardown_zsh_integration() -> Result<TeardownResult> {
+    const START_MARKER: &str = "# >>> forge initialize >>>";
+    const END_MARKER: &str = "# <<< forge initialize <<<";
+
+    let home = std::env::var("HOME").context("HOME environment variable not set")?;
+    let zdotdir = std::env::var("ZDOTDIR").unwrap_or_else(|_| home);
+    let zshrc_path = PathBuf::from(&zdotdir).join(".zshrc");
+
+    if !zshrc_path.exists() {
+        anyhow::bail!("{} not found", zshrc_path.display());
+    }
+
+    let content = fs::read_to_string(&zshrc_path)
+        .context(format!("Failed to read {}", zshrc_path.display()))?;
+
+    let mut lines: Vec<String> = content.lines().map(String::from).collect();
+    let marker_state = parse_markers(&lines, START_MARKER, END_MARKER);
+
+    let (start, end) = match marker_state {
+        MarkerState::Valid { start, end } => (start, end),
+        MarkerState::NotFound => {
+            anyhow::bail!(
+                "No forge markers found in {}. Nothing to teardown.",
+                zshrc_path.display()
+            );
+        }
+        MarkerState::Invalid { .. } => {
+            anyhow::bail!(
+                "Invalid forge markers found in {}. Please fix manually.",
+                zshrc_path.display()
+            );
+        }
+    };
+
+    // Create backup before modifying
+    let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
+    let parent = zshrc_path
+        .parent()
+        .context("zshrc path has no parent directory")?;
+    let filename = zshrc_path
+        .file_name()
+        .context("zshrc path has no filename")?;
+    let filename_str = filename.to_str().context("filename is not valid UTF-8")?;
+    let backup = parent.join(format!("{}.bak.{}", filename_str, timestamp));
+    fs::copy(&zshrc_path, &backup)
+        .context(format!("Failed to create backup at {}", backup.display()))?;
+
+    // Remove the marker block and any trailing blank line
+    let remove_end = if end + 1 < lines.len() && lines[end + 1].trim().is_empty() {
+        end + 1
+    } else {
+        end
+    };
+    // Also remove a leading blank line if present
+    let remove_start = if start > 0 && lines[start - 1].trim().is_empty() {
+        start - 1
+    } else {
+        start
+    };
+    lines.drain(remove_start..=remove_end);
+
+    let new_content = lines.join("\n") + "\n";
+    fs::write(&zshrc_path, &new_content)
+        .context(format!("Failed to write to {}", zshrc_path.display()))?;
+
+    Ok(TeardownResult {
+        message: "forge plugins removed".to_string(),
+        backup_path: Some(backup),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{LazyLock, Mutex};
