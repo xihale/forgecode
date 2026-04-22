@@ -312,6 +312,11 @@
       "type": "boolean",
       "default": false
     },
+    "sudo": {
+      "description": "Whether all shell commands should be executed with `sudo` privileges.\n\nWhen enabled, every command dispatched through the shell tool is\nautomatically prefixed with `sudo`. The user is prompted for their\npassword once when the setting is activated; the credentials are then\ncached by `sudo` for the remainder of the session (controlled by the\nsystem's `timestamp_timeout` setting).",
+      "type": "boolean",
+      "default": false
+    },
     "suggest": {
       "description": "Model and provider configuration used for shell command suggestion\ngeneration.",
       "anyOf": [

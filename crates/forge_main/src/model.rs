@@ -153,6 +153,8 @@ impl ForgeCommandManager {
                 | "sync-info"
                 | "workspace-init"
                 | "sync-init"
+                | "su"
+                | "unsu"
         )
     }
 
@@ -696,6 +698,14 @@ pub enum AppCommand {
     /// Index the current workspace for semantic code search
     #[strum(props(usage = "Index the current workspace for semantic search"))]
     Index,
+
+    /// Enable sudo mode for all shell commands in this session.
+    #[strum(props(usage = "Enable sudo mode for shell commands"))]
+    Su,
+
+    /// Disable sudo mode for all shell commands in this session.
+    #[strum(props(usage = "Disable sudo mode for shell commands"))]
+    Unsu,
 }
 
 impl AppCommand {
@@ -727,6 +737,8 @@ impl AppCommand {
             AppCommand::Rename { .. } => "rename",
             AppCommand::AgentSwitch(agent_id) => agent_id,
             AppCommand::Index => "index",
+            AppCommand::Su => "su",
+            AppCommand::Unsu => "unsu",
             AppCommand::Config => "config",
             AppCommand::ConfigModel => "config-model",
             AppCommand::ConfigReload => "config-reload",

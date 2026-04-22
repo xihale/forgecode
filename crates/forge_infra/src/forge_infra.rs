@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::sync::Arc;
-
 use bytes::Bytes;
 use forge_app::{
     CommandInfra, DirectoryReaderInfra, EnvironmentInfra, FileDirectoryInfra, FileInfoInfra,
@@ -89,13 +88,14 @@ impl ForgeInfra {
             file_read_service,
             file_write_service,
             file_remove_service: Arc::new(ForgeFileRemoveService::new()),
-            config_infra,
+            config_infra: config_infra.clone(),
             file_meta_service,
             create_dirs_service: Arc::new(ForgeCreateDirsService),
             directory_reader_service,
             command_executor_service: Arc::new(ForgeCommandExecutorService::new(
                 env.clone(),
                 output_printer.clone(),
+                config_infra.sudo_flag(),
             )),
             inquire_service: Arc::new(ForgeInquire::new()),
             mcp_server: ForgeMcpServer,

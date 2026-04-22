@@ -1,5 +1,6 @@
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use forge_app::CommandInfra;
@@ -18,11 +19,29 @@ pub struct ForgeCommandExecutorService {
 
     // Mutex to ensure that only one command is executed at a time
     ready: Arc<Mutex<()>>,
+
+    /// When `true`, all commands are prefixed with `sudo`.
+    sudo: Arc<AtomicBool>,
 }
 
 impl ForgeCommandExecutorService {
-    pub fn new(env: Environment, output_printer: Arc<StdConsoleWriter>) -> Self {
-        Self { env, output_printer, ready: Arc::new(Mutex::new(())) }
+    /// Create a new command executor service.
+    ///
+    /// # Arguments
+    /// * `env` - The runtime environment (OS, cwd, shell, etc.)
+    /// * `output_printer` - Shared console writer for streaming output
+    /// * `sudo` - Shared flag controlling whether commands run under `sudo`
+    pub fn new(
+        env: Environment,
+        output_printer: Arc<StdConsoleWriter>,
+        sudo: Arc<AtomicBool>,
+    ) -> Self {
+        Self { env, output_printer, ready: Arc::new(Mutex::new(())), sudo }
+    }
+
+    /// Returns a shared handle to the `sudo` flag so callers can toggle it.
+    pub fn sudo_flag(&self) -> Arc<AtomicBool> {
+        self.sudo.clone()
     }
 
     fn prepare_command(
@@ -31,6 +50,13 @@ impl ForgeCommandExecutorService {
         working_dir: &Path,
         env_vars: Option<Vec<String>>,
     ) -> Command {
+        // Prefix with `sudo` when the flag is set
+        let command_str = if self.sudo.load(Ordering::Relaxed) {
+            format!("sudo {command_str}")
+        } else {
+            command_str.to_string()
+        };
+
         // Create a basic command
         let is_windows = cfg!(target_os = "windows");
         let shell = self.env.shell.as_str();
@@ -59,9 +85,9 @@ impl ForgeCommandExecutorService {
         #[cfg(windows)]
         command.raw_arg(command_str);
         #[cfg(unix)]
-        command.arg(command_str);
+        command.arg(&command_str);
 
-        tracing::info!(command = command_str, "Executing command");
+        tracing::info!(command = %command_str, "Executing command");
 
         command.kill_on_drop(true);
 
@@ -260,9 +286,13 @@ mod tests {
         Arc::new(StdConsoleWriter::default())
     }
 
+    fn test_sudo() -> Arc<AtomicBool> {
+        Arc::new(AtomicBool::new(false))
+    }
+
     #[tokio::test]
     async fn test_command_executor() {
-        let fixture = ForgeCommandExecutorService::new(test_env(), test_printer());
+        let fixture = ForgeCommandExecutorService::new(test_env(), test_printer(), test_sudo());
         let cmd = "echo 'hello world'";
         let dir = ".";
 
@@ -294,7 +324,7 @@ mod tests {
             std::env::set_var("ANOTHER_TEST_VAR", "another_value");
         }
 
-        let fixture = ForgeCommandExecutorService::new(test_env(), test_printer());
+        let fixture = ForgeCommandExecutorService::new(test_env(), test_printer(), test_sudo());
         let cmd = if cfg!(target_os = "windows") {
             "echo %TEST_ENV_VAR%"
         } else {
@@ -327,7 +357,7 @@ mod tests {
             std::env::remove_var("MISSING_ENV_VAR");
         }
 
-        let fixture = ForgeCommandExecutorService::new(test_env(), test_printer());
+        let fixture = ForgeCommandExecutorService::new(test_env(), test_printer(), test_sudo());
         let cmd = if cfg!(target_os = "windows") {
             "echo %MISSING_ENV_VAR%"
         } else {
@@ -350,7 +380,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_command_executor_with_empty_env_list() {
-        let fixture = ForgeCommandExecutorService::new(test_env(), test_printer());
+        let fixture = ForgeCommandExecutorService::new(test_env(), test_printer(), test_sudo());
         let cmd = "echo 'no env vars'";
 
         let actual = fixture
@@ -374,7 +404,7 @@ mod tests {
             std::env::set_var("SECOND_VAR", "second");
         }
 
-        let fixture = ForgeCommandExecutorService::new(test_env(), test_printer());
+        let fixture = ForgeCommandExecutorService::new(test_env(), test_printer(), test_sudo());
         let cmd = if cfg!(target_os = "windows") {
             "echo %FIRST_VAR% %SECOND_VAR%"
         } else {
@@ -404,7 +434,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_command_executor_silent() {
-        let fixture = ForgeCommandExecutorService::new(test_env(), test_printer());
+        let fixture = ForgeCommandExecutorService::new(test_env(), test_printer(), test_sudo());
         let cmd = "echo 'silent test'";
         let dir = ".";
 

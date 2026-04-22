@@ -700,6 +700,11 @@ pub enum ConfigSetField {
         /// Effort level: none, minimal, low, medium, high, xhigh, max.
         effort: Effort,
     },
+    /// Enable or disable `sudo` mode for all shell commands.
+    Sudo {
+        /// When `true`, every shell command is automatically prefixed with `sudo`.
+        enabled: bool,
+    },
 }
 
 /// Type-safe subcommands for `forge config get`.
@@ -721,6 +726,8 @@ pub enum ConfigGetField {
     Suggest,
     /// Get the reasoning effort level.
     ReasoningEffort,
+    /// Get whether `sudo` mode is active for shell commands.
+    Sudo,
 }
 
 /// Command group for conversation management.

@@ -2553,6 +2553,46 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 let cwd = self.state.cwd.clone();
                 self.on_workspace_init(cwd, false).await?;
             }
+            AppCommand::Su => {
+                // Check if credentials are already cached (non-interactive)
+                self.spinner.start(Some("Checking sudo credentials"))?;
+                let cached = self
+                    .api
+                    .execute_shell_command_raw("sudo -vn true 2>/dev/null")
+                    .await?;
+                self.spinner.stop(None)?;
+
+                if cached.success() {
+                    self.api
+                        .update_config(vec![ConfigOperation::SetSudo(true)])
+                        .await?;
+                    self.writeln_title(TitleFormat::info("Sudo mode enabled"))?;
+                } else {
+                    // Credentials not cached — run `sudo -v` interactively.
+                    // execute_command_raw inherits the terminal's stdio so
+                    // sudo will prompt for the password with proper masking.
+                    let status = self
+                        .api
+                        .execute_shell_command_raw("sudo -v")
+                        .await?;
+                    if status.success() {
+                        self.api
+                            .update_config(vec![ConfigOperation::SetSudo(true)])
+                            .await?;
+                        self.writeln_title(TitleFormat::info("Sudo mode enabled"))?;
+                    } else {
+                        self.writeln_title(TitleFormat::error(
+                            "Sudo authentication failed",
+                        ))?;
+                    }
+                }
+            }
+            AppCommand::Unsu => {
+                self.api
+                    .update_config(vec![ConfigOperation::SetSudo(false)])
+                    .await?;
+                self.writeln_title(TitleFormat::info("Sudo mode disabled"))?;
+            }
         }
 
         Ok(false)
@@ -4756,6 +4796,15 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                         .sub_title("is now the reasoning effort"),
                 )?;
             }
+            ConfigSetField::Sudo { enabled } => {
+                self.api
+                    .update_config(vec![ConfigOperation::SetSudo(enabled)])
+                    .await?;
+                self.writeln_title(
+                    TitleFormat::action(if enabled { "enabled" } else { "disabled" }.to_string())
+                        .sub_title("sudo mode"),
+                )?;
+            }
         }
 
         Ok(())
@@ -4830,6 +4879,9 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                     Some(e) => self.writeln(e.to_string())?,
                     None => self.writeln("ReasoningEffort: Not set")?,
                 }
+            }
+            ConfigGetField::Sudo => {
+                self.writeln(self.config.sudo.to_string())?;
             }
         }
 

@@ -31,6 +31,10 @@ pub enum ConfigOperation {
     SetSuggestConfig(ModelConfig),
     /// Set the reasoning effort level for all agents.
     SetReasoningEffort(Effort),
+    /// Enable or disable `sudo` mode for all shell commands.
+    ///
+    /// When enabled, every shell command is automatically prefixed with `sudo`.
+    SetSudo(bool),
 }
 
 pub const VERSION: &str = match option_env!("APP_VERSION") {
