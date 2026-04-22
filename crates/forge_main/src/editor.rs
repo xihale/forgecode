@@ -12,6 +12,7 @@ use reedline::{
 
 use super::completer::InputCompleter;
 use super::zsh::paste::wrap_pasted_text;
+use crate::clipboard::paste_image_from_clipboard;
 use crate::highlighter::ForgeHighlighter;
 use crate::model::ForgeCommandManager;
 use crate::prompt::ForgePrompt;
@@ -177,6 +178,15 @@ impl EditMode for ForgeEditMode {
                 let mut state = self.effort_state.lock().unwrap();
                 state.cycle();
                 return ReedlineEvent::Repaint;
+            }
+
+            // Ctrl+V: paste image from clipboard as @[path] attachment
+            if key.code == KeyCode::Char('v') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                if let Ok(path) = paste_image_from_clipboard() {
+                    let attachment = format!("@[{}] ", path.display());
+                    return ReedlineEvent::Edit(vec![EditCommand::InsertString(attachment)]);
+                }
+                return ReedlineEvent::None;
             }
         }
 
