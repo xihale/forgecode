@@ -56,10 +56,10 @@ impl ConfigReader {
     ///
     /// Resolution order:
     /// 1. `FORGE_CONFIG` environment variable, if set.
-    /// 2. `~/forge` (legacy path), if that directory exists, so users who have
-    ///    not yet run `forge config migrate` continue to read from their
+    /// 2. `~/.forge` as the default path, if that directory exists.
+    /// 3. `~/forge` (legacy path), if that directory exists, so users who
+    ///    have not yet run `forge config migrate` continue to read from their
     ///    existing directory without disruption.
-    /// 3. `~/.forge` as the default path.
     pub fn base_path() -> PathBuf {
         BASE_PATH.clone()
     }
@@ -70,17 +70,17 @@ impl ConfigReader {
         }
 
         let base = dirs::home_dir().unwrap_or(PathBuf::from("."));
-        let path = base.join("forge");
+        let new_path = base.join(".forge");
 
-        // Prefer ~/forge (legacy) when it exists so existing users are not
-        // disrupted; fall back to ~/.forge as the default.
-        if path.exists() {
-            tracing::info!("Using legacy path");
-            return path;
+        // Prefer ~/.forge (new path) when it exists so that migrated users
+        // read from the canonical location; fall back to ~/forge (legacy).
+        if new_path.exists() {
+            tracing::info!("Using new path");
+            return new_path;
         }
 
-        tracing::info!("Using new path");
-        base.join(".forge")
+        tracing::info!("Using legacy path");
+        base.join("forge")
     }
 
     /// Adds the provided TOML string as a config source without touching the
