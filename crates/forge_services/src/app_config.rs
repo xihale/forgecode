@@ -217,6 +217,9 @@ mod tests {
                         ConfigOperation::SetReasoningEffort(_) => {
                             // No-op in tests
                         }
+                        ConfigOperation::SetSudo(enabled) => {
+                            config.sudo = enabled;
+                        }
                     }
                 }
                 Ok(())

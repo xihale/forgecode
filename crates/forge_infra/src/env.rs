@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use forge_app::EnvironmentInfra;
@@ -70,6 +71,9 @@ fn apply_config_op(fc: &mut ForgeConfig, op: ConfigOperation) {
                 .get_or_insert_with(forge_config::ReasoningConfig::default);
             reasoning.effort = Some(config_effort);
         }
+        ConfigOperation::SetSudo(enabled) => {
+            fc.sudo = enabled;
+        }
     }
 }
 
@@ -82,6 +86,9 @@ fn apply_config_op(fc: &mut ForgeConfig, op: ConfigOperation) {
 pub struct ForgeEnvironmentInfra {
     cwd: PathBuf,
     cache: Arc<std::sync::Mutex<Option<ForgeConfig>>>,
+    /// Shared flag mirrored into the command executor so it can prefix
+    /// commands with `sudo` without re-reading config from disk.
+    sudo: Arc<AtomicBool>,
 }
 
 impl ForgeEnvironmentInfra {
@@ -94,7 +101,13 @@ impl ForgeEnvironmentInfra {
     /// * `cwd` - The working directory path; used to resolve `.env` files
     /// * `config` - The pre-read [`ForgeConfig`] to seed the in-memory cache
     pub fn new(cwd: PathBuf, config: ForgeConfig) -> Self {
-        Self { cwd, cache: Arc::new(std::sync::Mutex::new(Some(config))) }
+        let sudo = Arc::new(AtomicBool::new(config.sudo));
+        Self { cwd, cache: Arc::new(std::sync::Mutex::new(Some(config))), sudo }
+    }
+
+    /// Returns the shared `sudo` flag so the command executor can observe it.
+    pub fn sudo_flag(&self) -> Arc<AtomicBool> {
+        self.sudo.clone()
     }
 
     /// Returns the cached [`ForgeConfig`], re-reading from disk if the cache
@@ -148,6 +161,9 @@ impl EnvironmentInfra for ForgeEnvironmentInfra {
         debug!(config = ?fc, ?ops, "applying app config operations");
 
         for op in ops {
+            if let ConfigOperation::SetSudo(enabled) = op {
+                self.sudo.store(enabled, Ordering::Relaxed);
+            }
             apply_config_op(&mut fc, op);
         }
 

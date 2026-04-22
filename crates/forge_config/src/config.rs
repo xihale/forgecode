@@ -336,6 +336,16 @@ pub struct ForgeConfig {
     /// user or assistant turns (e.g. vLLM, NVIDIA NIM).
     #[serde(default)]
     pub merge_system_messages: bool,
+
+    /// Whether all shell commands should be executed with `sudo` privileges.
+    ///
+    /// When enabled, every command dispatched through the shell tool is
+    /// automatically prefixed with `sudo`. The user is prompted for their
+    /// password once when the setting is activated; the credentials are then
+    /// cached by `sudo` for the remainder of the session (controlled by the
+    /// system's `timestamp_timeout` setting).
+    #[serde(default)]
+    pub sudo: bool,
 }
 
 impl ForgeConfig {
