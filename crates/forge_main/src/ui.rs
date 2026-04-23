@@ -258,6 +258,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 env.clone(),
                 config.custom_history_path.clone(),
                 command.clone(),
+                AgentId::default(),
             ),
             cli,
             command,
@@ -315,6 +316,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         }
 
         forge_prompt.effort_state(self.console.effort_state());
+        forge_prompt.agent_toggle_state(self.console.agent_toggle_state());
 
         self.console.prompt(&mut forge_prompt, &self.api).await
     }
@@ -2576,19 +2578,14 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                     // Credentials not cached — run `sudo -v` interactively.
                     // execute_command_raw inherits the terminal's stdio so
                     // sudo will prompt for the password with proper masking.
-                    let status = self
-                        .api
-                        .execute_shell_command_raw("sudo -v")
-                        .await?;
+                    let status = self.api.execute_shell_command_raw("sudo -v").await?;
                     if status.success() {
                         self.api
                             .update_config(vec![ConfigOperation::SetSudo(true)])
                             .await?;
                         self.writeln_title(TitleFormat::info("Sudo mode enabled"))?;
                     } else {
-                        self.writeln_title(TitleFormat::error(
-                            "Sudo authentication failed",
-                        ))?;
+                        self.writeln_title(TitleFormat::error("Sudo authentication failed"))?;
                     }
                 }
             }
@@ -4093,9 +4090,11 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         title.push_str(format!(" {}", id.into_string()).as_str());
 
         // Show active model in subtitle for visibility
-        let model_info = self.api.get_session_config().await.map(|c| {
-            format!("{} · {}", c.provider, c.model)
-        });
+        let model_info = self
+            .api
+            .get_session_config()
+            .await
+            .map(|c| format!("{} · {}", c.provider, c.model));
 
         let mut fmt = TitleFormat::debug(title);
         if let Some(info) = model_info {
@@ -4450,16 +4449,16 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 if !self.shell_quiet_mode()
                     && let Some(conversation_id) = self.state.conversation_id
                 {
-                    let model_info = self.api.get_session_config().await.map(|c| {
-                        format!("{} · {}", c.provider, c.model)
-                    });
+                    let model_info = self
+                        .api
+                        .get_session_config()
+                        .await
+                        .map(|c| format!("{} · {}", c.provider, c.model));
                     let sub = match model_info {
                         Some(ref info) => format!("{} | {}", conversation_id.into_string(), info),
                         None => conversation_id.into_string(),
                     };
-                    self.writeln_title(
-                        TitleFormat::debug("Finished").sub_title(sub),
-                    )?;
+                    self.writeln_title(TitleFormat::debug("Finished").sub_title(sub))?;
                 }
                 if let Some(format) = self.config.auto_dump.clone() {
                     let html = matches!(format, forge_config::AutoDumpFormat::Html);

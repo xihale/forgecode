@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use forge_api::{API, Effort, Environment};
+use forge_api::{API, AgentId, Effort, Environment};
 
-use crate::editor::{EffortState, ForgeEditor, ReadResult};
+use crate::editor::{AgentToggleState, EffortState, ForgeEditor, ReadResult};
 use crate::model::{AppCommand, ForgeCommandManager};
 use crate::prompt::ForgePrompt;
 use crate::tracker;
@@ -12,6 +12,7 @@ pub struct Console {
     command: Arc<ForgeCommandManager>,
     editor: Mutex<ForgeEditor>,
     effort_state: Arc<Mutex<EffortState>>,
+    agent_toggle_state: Arc<Mutex<AgentToggleState>>,
 }
 
 impl Console {
@@ -20,15 +21,19 @@ impl Console {
         env: Environment,
         custom_history_path: Option<PathBuf>,
         command: Arc<ForgeCommandManager>,
+        current_agent: AgentId,
     ) -> Self {
         let effort_state = Arc::new(Mutex::new(EffortState::default()));
+        let agent_toggle_state = Arc::new(Mutex::new(AgentToggleState::default()));
         let editor = Mutex::new(ForgeEditor::new(
             env,
             custom_history_path,
             command.clone(),
             effort_state.clone(),
+            agent_toggle_state.clone(),
+            current_agent,
         ));
-        Self { command, editor, effort_state }
+        Self { command, editor, effort_state, agent_toggle_state }
     }
 
     /// Returns a snapshot of the current effort, if set.
@@ -39,6 +44,11 @@ impl Console {
     /// Returns a handle to the shared effort state for UI rendering.
     pub fn effort_state(&self) -> Arc<Mutex<EffortState>> {
         self.effort_state.clone()
+    }
+
+    /// Returns a handle to the shared agent toggle state for UI rendering.
+    pub fn agent_toggle_state(&self) -> Arc<Mutex<AgentToggleState>> {
+        self.agent_toggle_state.clone()
     }
 
     /// Low-level prompt that returns raw user input result
@@ -54,6 +64,8 @@ impl Console {
     /// 2. Clamp the stored effort to the supported set (or clear it).
     /// 3. Read user input (Ctrl+T may cycle the effort in the editor).
     /// 4. Persist the (possibly changed) effort back to the API.
+    /// 5. If Ctrl+E toggled the agent, sync the new agent to the API and
+    ///    continue the loop so the prompt re-renders with the updated agent.
     pub async fn prompt<A: API>(
         &self,
         prompt: &mut ForgePrompt,
@@ -65,6 +77,13 @@ impl Console {
             let user_input = self.prompt_raw(prompt)?;
 
             self.sync_effort_to_api(api).await;
+
+            // If Ctrl+E toggled the agent, apply the change and re-render.
+            if let Some(new_agent) = self.drain_agent_toggle() {
+                api.set_active_agent(new_agent.clone()).await?;
+                prompt.agent_id = new_agent;
+                continue;
+            }
 
             match user_input {
                 ReadResult::Continue => continue,
@@ -85,6 +104,11 @@ impl Console {
     }
 
     // -- Effort helpers -------------------------------------------------------
+
+    /// Drains the pending agent toggle (if any) from the shared state.
+    fn drain_agent_toggle(&self) -> Option<AgentId> {
+        self.agent_toggle_state.lock().unwrap().pending.take()
+    }
 
     /// Resolves the supported reasoning efforts for the active model and
     /// clamps the stored effort accordingly.
