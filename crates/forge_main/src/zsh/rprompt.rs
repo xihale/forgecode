@@ -155,6 +155,7 @@ impl Display for ZshRPrompt {
             write!(f, " [{}]", styled)?;
         }
 
+
         // Add model (always colored — it's a static config identifier, not
         // conversation state)
         if let Some(ref model_id) = self.model {
