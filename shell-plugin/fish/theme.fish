@@ -7,6 +7,12 @@ function fish_right_prompt
         set forge_bin forge
     end
 
+    if not type -q -- "$forge_bin"
+        if not test -x "$forge_bin"
+            return
+        end
+    end
+
     # Pass session variables as environment to the rprompt command
     set -lx FORGE_SESSION__MODEL_ID "$_FORGE_SESSION_MODEL"
     set -lx FORGE_SESSION__PROVIDER_ID "$_FORGE_SESSION_PROVIDER"

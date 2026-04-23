@@ -44,23 +44,27 @@ impl EffortState {
     }
 }
 
-/// Shared state for Ctrl+E agent toggling between forge and muse.
+/// Shared state for Ctrl+Q agent cycling.
 #[derive(Debug, Clone, Default)]
-pub struct AgentToggleState {
-    /// The pending agent to switch to (set by Ctrl+E, consumed by Console).
-    pub pending: Option<AgentId>,
+pub struct AgentState {
+    /// The currently selected agent (updated by Ctrl+Q, read by prompt renderer
+    /// and Console).
+    pub current: AgentId,
 }
 
-impl AgentToggleState {
-    /// Toggles between forge and muse, returning the new agent.
-    fn toggle(&mut self, current: &AgentId) -> AgentId {
-        let next = if current == &AgentId::FORGE {
+impl AgentState {
+    /// Creates a new `AgentState` with the given initial agent.
+    pub fn new(initial: AgentId) -> Self {
+        Self { current: initial }
+    }
+
+    /// Cycles through the standard agent order: forge → muse → forge → …
+    pub fn cycle(&mut self) {
+        self.current = if self.current == AgentId::FORGE {
             AgentId::MUSE
         } else {
             AgentId::FORGE
         };
-        self.pending = Some(next.clone());
-        next
     }
 }
 
@@ -118,8 +122,7 @@ impl ForgeEditor {
         custom_history_path: Option<PathBuf>,
         manager: Arc<ForgeCommandManager>,
         effort_state: Arc<Mutex<EffortState>>,
-        agent_toggle_state: Arc<Mutex<AgentToggleState>>,
-        current_agent: AgentId,
+        agent_state: Arc<Mutex<AgentState>>,
     ) -> Self {
         // Store file history in system config directory
         let history_file = env.history_path(custom_history_path.as_ref());
@@ -138,8 +141,7 @@ impl ForgeEditor {
         let edit_mode = Box::new(ForgeEditMode::new(
             Self::init(),
             effort_state.clone(),
-            agent_toggle_state,
-            current_agent,
+            agent_state,
         ));
 
         let editor = Reedline::create()
@@ -185,8 +187,7 @@ pub struct ReadLineError(std::io::Error);
 struct ForgeEditMode {
     inner: Emacs,
     effort_state: Arc<Mutex<EffortState>>,
-    agent_toggle_state: Arc<Mutex<AgentToggleState>>,
-    current_agent: AgentId,
+    agent_state: Arc<Mutex<AgentState>>,
 }
 
 impl ForgeEditMode {
@@ -195,15 +196,9 @@ impl ForgeEditMode {
     fn new(
         keybindings: reedline::Keybindings,
         effort_state: Arc<Mutex<EffortState>>,
-        agent_toggle_state: Arc<Mutex<AgentToggleState>>,
-        current_agent: AgentId,
+        agent_state: Arc<Mutex<AgentState>>,
     ) -> Self {
-        Self {
-            inner: Emacs::new(keybindings),
-            effort_state,
-            agent_toggle_state,
-            current_agent,
-        }
+        Self { inner: Emacs::new(keybindings), effort_state, agent_state }
     }
 }
 
@@ -219,11 +214,10 @@ impl EditMode for ForgeEditMode {
                 return ReedlineEvent::Repaint;
             }
 
-            // Ctrl+E: toggle between forge and muse agent
-            if key.code == KeyCode::Char('e') && key.modifiers.contains(KeyModifiers::CONTROL) {
-                let mut state = self.agent_toggle_state.lock().unwrap();
-                let next = state.toggle(&self.current_agent);
-                self.current_agent = next;
+            // Ctrl+Q: cycle between forge and muse agent
+            if key.code == KeyCode::Char('q') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                let mut state = self.agent_state.lock().unwrap();
+                state.cycle();
                 return ReedlineEvent::Repaint;
             }
 

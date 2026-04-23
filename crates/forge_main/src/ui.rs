@@ -236,14 +236,21 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
 
     // Set the current mode and update conversation variable
     async fn on_agent_change(&mut self, agent_id: AgentId) -> Result<()> {
+        let agent_infos = self.api.get_agent_infos().await?;
+
         // Convert string to AgentId for validation
-        let agent = self
-            .api
-            .get_agent_infos()
-            .await?
+        let agent = agent_infos
             .into_iter()
             .find(|info| info.id == agent_id)
-            .ok_or(anyhow::anyhow!("Undefined agent: {agent_id}"))?;
+            .ok_or_else(|| {
+                if agent_id == AgentId::SAGE {
+                    anyhow::anyhow!(
+                        "Undefined agent: {agent_id}. The sage agent is disabled unless `research_subagent = true` in your Forge config"
+                    )
+                } else {
+                    anyhow::anyhow!("Undefined agent: {agent_id}")
+                }
+            })?;
 
         // Update the app config with the new operating agent.
         self.api.set_active_agent(agent.id.clone()).await?;
@@ -353,7 +360,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         }
 
         forge_prompt.effort_state(self.console.effort_state());
-        forge_prompt.agent_toggle_state(self.console.agent_toggle_state());
+        forge_prompt.agent_state(self.console.agent_state());
 
         self.console.prompt(&mut forge_prompt).await
     }

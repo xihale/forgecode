@@ -133,6 +133,12 @@ function __forge_accept_line
 
     # Dispatch to appropriate action handler
     switch "$user_action"
+        case sage ask
+            _forge_action_agent "sage"
+        case muse plan
+            _forge_action_agent "muse"
+        case forge
+            _forge_action_agent "forge"
         case new n
             _forge_action_new "$input_text"
         case info i
