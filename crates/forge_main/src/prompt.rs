@@ -11,7 +11,7 @@ use reedline::{Prompt, PromptHistorySearchStatus};
 use std::sync::{Arc, Mutex};
 
 use crate::display_constants::markers;
-use crate::editor::EffortState;
+use crate::editor::{AgentToggleState, EffortState};
 use crate::utils::humanize_number;
 
 // Constants
@@ -44,6 +44,10 @@ pub struct ForgePrompt {
     /// rendered to the right of the model when set. `Effort::None` is
     /// suppressed (see [`ForgePrompt::render_prompt_right`]).
     pub reasoning_effort: Option<Effort>,
+    pub context_length: Option<u64>,
+    pub effort: Option<Effort>,
+    pub effort_state: Option<Arc<Mutex<EffortState>>>,
+    pub agent_toggle_state: Option<Arc<Mutex<AgentToggleState>>>,
     pub git_branch: Option<String>,
 }
 
@@ -58,6 +62,10 @@ impl ForgePrompt {
             agent_id,
             model: None,
             reasoning_effort: None,
+            context_length: None,
+            effort: None,
+            effort_state: None,
+            agent_toggle_state: None,
             git_branch,
         }
     }
@@ -137,10 +145,17 @@ impl Prompt for ForgePrompt {
         };
         let mut result = String::with_capacity(64);
 
-        // Agent name with nerd font symbol
+        // Agent name with nerd font symbol — prefer pending toggle for
+        // instant visual feedback when Ctrl+E is pressed
+        let display_agent = self
+            .agent_toggle_state
+            .as_ref()
+            .and_then(|state| state.lock().ok())
+            .and_then(|s| s.pending.clone())
+            .unwrap_or_else(|| self.agent_id.clone());
         let agent_str = format!(
             "{AGENT_SYMBOL} {}",
-            self.agent_id.as_str().to_case(Case::UpperSnake)
+            display_agent.as_str().to_case(Case::UpperSnake)
         );
         write!(
             result,
@@ -329,7 +344,11 @@ mod tests {
                 usage: None,
                 agent_id: AgentId::default(),
                 model: None,
-                reasoning_effort: None,
+            reasoning_effort: None,
+            context_length: None,
+            effort: None,
+            effort_state: None,
+            agent_toggle_state: None,
                 git_branch: None,
             }
         }
