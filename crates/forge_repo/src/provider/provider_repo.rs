@@ -677,6 +677,29 @@ mod tests {
     }
 
     #[test]
+    fn test_nvidia_nim_config() {
+        let configs = get_provider_configs();
+        let config = configs
+            .iter()
+            .find(|c| c.id == ProviderId::NVIDIA_NIM)
+            .unwrap();
+        assert_eq!(config.id, ProviderId::NVIDIA_NIM);
+        assert_eq!(config.api_key_vars, Some("NVIDIA_NIM_API_KEY".to_string()));
+        assert!(config.url_param_vars.is_empty());
+        assert_eq!(config.response_type, Some(ProviderResponse::OpenAI));
+        assert_eq!(
+            config.url.as_str(),
+            "https://integrate.api.nvidia.com/v1/chat/completions"
+        );
+        match config.models.as_ref().unwrap() {
+            Models::Url(model_url) => {
+                assert_eq!(model_url, "https://integrate.api.nvidia.com/v1/models");
+            }
+            Models::Hardcoded(_) => panic!("Expected Models::Url variant"),
+        }
+    }
+
+    #[test]
     fn test_openai_compatible_config() {
         let configs = get_provider_configs();
         let config = configs

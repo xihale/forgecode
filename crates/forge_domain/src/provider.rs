@@ -53,6 +53,7 @@ impl ProviderId {
     pub const ZAI_CODING: ProviderId = ProviderId(Cow::Borrowed("zai_coding"));
     pub const CEREBRAS: ProviderId = ProviderId(Cow::Borrowed("cerebras"));
     pub const XAI: ProviderId = ProviderId(Cow::Borrowed("xai"));
+    pub const NVIDIA_NIM: ProviderId = ProviderId(Cow::Borrowed("nvidia_nim"));
     pub const ANTHROPIC: ProviderId = ProviderId(Cow::Borrowed("anthropic"));
     pub const CLAUDE_CODE: ProviderId = ProviderId(Cow::Borrowed("claude_code"));
     pub const VERTEX_AI: ProviderId = ProviderId(Cow::Borrowed("vertex_ai"));
@@ -90,6 +91,7 @@ impl ProviderId {
             ProviderId::ZAI_CODING,
             ProviderId::CEREBRAS,
             ProviderId::XAI,
+            ProviderId::NVIDIA_NIM,
             ProviderId::ANTHROPIC,
             ProviderId::CLAUDE_CODE,
             ProviderId::VERTEX_AI,
@@ -127,6 +129,7 @@ impl ProviderId {
         match self.0.as_ref() {
             "openai" => "OpenAI".to_string(),
             "xai" => "XAI".to_string(),
+            "nvidia_nim" => "NVIDIA NIM".to_string(),
             "zai" => "ZAI".to_string(),
             "vertex_ai" => "VertexAI".to_string(),
             "vertex_ai_anthropic" => "VertexAIAnthropic".to_string(),
@@ -171,6 +174,7 @@ impl std::str::FromStr for ProviderId {
             "zai_coding" => ProviderId::ZAI_CODING,
             "cerebras" => ProviderId::CEREBRAS,
             "xai" => ProviderId::XAI,
+            "nvidia_nim" => ProviderId::NVIDIA_NIM,
             "anthropic" => ProviderId::ANTHROPIC,
             "claude_code" => ProviderId::CLAUDE_CODE,
             "vertex_ai" => ProviderId::VERTEX_AI,
@@ -546,6 +550,7 @@ mod tests {
         assert_eq!(ProviderId::OPEN_ROUTER.to_string(), "OpenRouter");
         assert_eq!(ProviderId::ZAI.to_string(), "ZAI");
         assert_eq!(ProviderId::XAI.to_string(), "XAI");
+        assert_eq!(ProviderId::NVIDIA_NIM.to_string(), "NVIDIA NIM");
         assert_eq!(ProviderId::ANTHROPIC.to_string(), "Anthropic");
         assert_eq!(ProviderId::GITHUB_COPILOT.to_string(), "GithubCopilot");
         assert_eq!(ProviderId::VERTEX_AI.to_string(), "VertexAI");
@@ -591,6 +596,13 @@ mod tests {
     }
 
     #[test]
+    fn test_nvidia_nim_from_str() {
+        let actual = ProviderId::from_str("nvidia_nim").unwrap();
+        let expected = ProviderId::NVIDIA_NIM;
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn test_codex_in_built_in_providers() {
         let built_in = ProviderId::built_in_providers();
         assert!(built_in.contains(&ProviderId::CODEX));
@@ -598,6 +610,7 @@ mod tests {
         assert!(built_in.contains(&ProviderId::FIREWORKS_AI));
         assert!(built_in.contains(&ProviderId::OPENCODE_GO));
         assert!(built_in.contains(&ProviderId::GOOGLE_AI_STUDIO));
+        assert!(built_in.contains(&ProviderId::NVIDIA_NIM));
     }
 
     #[test]

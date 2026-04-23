@@ -134,6 +134,28 @@ function forge-accept-line() {
         ;;
     esac
     
+    # Direct agent switches without arguments should update the active agent
+    # immediately instead of going through the generic command lookup path.
+    if [[ -z "$input_text" ]]; then
+        case "$user_action" in
+            sage|ask)
+                _forge_action_agent "sage"
+                _forge_reset
+                return
+            ;;
+            muse|plan)
+                _forge_action_agent "muse"
+                _forge_reset
+                return
+            ;;
+            forge)
+                _forge_action_agent "forge"
+                _forge_reset
+                return
+            ;;
+        esac
+    fi
+
     # ⚠️  IMPORTANT: When adding a new command here, you MUST also update:
     #     crates/forge_main/src/built_in_commands.json
     #     Add a new entry: {"command": "name", "description": "Description [alias: x]"}
@@ -143,8 +165,6 @@ function forge-accept-line() {
     # Dispatch to appropriate action handler using pattern matching
     case "$user_action" in
         new|n)
-            _forge_action_new "$input_text"
-        ;;
         info|i)
             _forge_action_info
         ;;
