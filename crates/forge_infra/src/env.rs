@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use forge_app::EnvironmentInfra;
 use forge_config::{ConfigReader, ForgeConfig, ModelConfig};
@@ -10,7 +10,7 @@ use tokio::task::JoinHandle;
 use tracing::debug;
 
 /// Interval in seconds between sudo keepalive refreshes.
-const SUDO_KEEPALIVE_INTERVAL_SECS: u64 = 300; // 5 minutes
+const SUDO_KEEPALIVE_INTERVAL_SECS: u64 = 30; // 30 seconds
 
 /// Builds a [`forge_domain::Environment`] from runtime context only.
 ///
@@ -202,12 +202,20 @@ impl EnvironmentInfra for ForgeEnvironmentInfra {
 }
 
 impl ForgeEnvironmentInfra {
+    /// Returns the sudo keepalive interval in seconds.
+    ///
+    /// A shorter interval keeps credentials warm for the lifetime of the
+    /// session without requiring an interactive password prompt.
+    pub fn sudo_keepalive_interval_secs() -> u64 {
+        SUDO_KEEPALIVE_INTERVAL_SECS
+    }
+
     /// Starts or stops the sudo keepalive background task.
     ///
-    /// When `enabled` is `true`, spawns a background task that periodically
-    /// runs `sudo -v` to refresh the credential timestamp so it does not
-    /// expire during the session. When `enabled` is `false`, aborts any
-    /// running keepalive task.
+    /// When `enabled` is `true`, spawns a background task that refreshes the
+    /// sudo timestamp immediately and then revalidates often enough that it
+    /// stays warm for the duration of the session. When `enabled` is `false`,
+    /// aborts any running keepalive task.
     pub(crate) async fn refresh_keepalive(&self, enabled: bool) {
         let mut guard = self.keepalive.lock().await;
         // Abort any existing keepalive task
@@ -217,18 +225,21 @@ impl ForgeEnvironmentInfra {
         if enabled {
             let handle = tokio::spawn(async {
                 loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(
-                        SUDO_KEEPALIVE_INTERVAL_SECS,
-                    ))
-                    .await;
-                    // Use std::process::Command to avoid depending on the
-                    // command executor (which would create a circular dep).
+                    // Refresh immediately when sudo mode is enabled, then
+                    // continue to revalidate often enough that the timestamp
+                    // stays warm for the lifetime of the session.
                     let _ = std::process::Command::new("sudo")
+                        .arg("-n")
                         .arg("-v")
                         .stdin(std::process::Stdio::null())
                         .stdout(std::process::Stdio::null())
                         .stderr(std::process::Stdio::null())
                         .status();
+
+                    tokio::time::sleep(std::time::Duration::from_secs(
+                        SUDO_KEEPALIVE_INTERVAL_SECS,
+                    ))
+                    .await;
                 }
             });
             *guard = Some(handle);

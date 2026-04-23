@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use bstr::ByteSlice;
 use forge_app::CommandInfra;
@@ -12,6 +12,14 @@ use tokio::sync::Mutex;
 
 use crate::console::StdConsoleWriter;
 
+fn apply_sudo_prefix(command_str: &str, enabled: bool) -> String {
+    if enabled {
+        format!("sudo -n {command_str}")
+    } else {
+        command_str.to_string()
+    }
+}
+
 /// Service for executing shell commands
 #[derive(Clone, Debug)]
 pub struct ForgeCommandExecutorService {
@@ -21,7 +29,8 @@ pub struct ForgeCommandExecutorService {
     // Mutex to ensure that only one command is executed at a time
     ready: Arc<Mutex<()>>,
 
-    /// When `true`, all commands are prefixed with `sudo`.
+    /// When `true`, all commands are prefixed with `sudo -n` so they fail
+    /// fast instead of blocking for a password prompt.
     sudo: Arc<AtomicBool>,
 }
 
@@ -51,12 +60,7 @@ impl ForgeCommandExecutorService {
         working_dir: &Path,
         env_vars: Option<Vec<String>>,
     ) -> Command {
-        // Prefix with `sudo` when the flag is set
-        let command_str = if self.sudo.load(Ordering::Relaxed) {
-            format!("sudo {command_str}")
-        } else {
-            command_str.to_string()
-        };
+        let command_str = apply_sudo_prefix(command_str, self.sudo.load(Ordering::Relaxed));
 
         // Create a basic command
         let is_windows = cfg!(target_os = "windows");
@@ -301,6 +305,20 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use super::*;
+
+    #[test]
+    fn apply_sudo_prefix_disabled_leaves_command_unchanged() {
+        let actual = apply_sudo_prefix("echo hello", false);
+        let expected = "echo hello".to_string();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn apply_sudo_prefix_enabled_adds_noninteractive_sudo() {
+        let actual = apply_sudo_prefix("echo hello", true);
+        let expected = "sudo -n echo hello".to_string();
+        assert_eq!(actual, expected);
+    }
 
     fn test_env() -> Environment {
         use fake::{Fake, Faker};
