@@ -5,7 +5,7 @@ use std::time::Duration;
 use chrono::Local;
 use tokio::sync::Notify;
 
-use crate::{ToolCallFull, ToolName, ToolResult};
+use crate::{ModelId, ProviderId, ToolCallFull, ToolName, ToolResult};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatResponseContent {
@@ -59,7 +59,12 @@ pub enum ChatResponse {
     TaskReasoning {
         content: String,
     },
-    TaskComplete,
+    TaskComplete {
+        /// The provider that was used to complete the task.
+        provider: ProviderId,
+        /// The model that was used to complete the task.
+        model: ModelId,
+    },
     ToolCallStart {
         tool_call: ToolCallFull,
         notifier: Arc<Notify>,

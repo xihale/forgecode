@@ -314,6 +314,10 @@ mod tests {
             Ok(None)
         }
 
+        async fn get_shell_config(&self) -> Result<Option<forge_domain::ModelConfig>> {
+            Ok(None)
+        }
+
         async fn get_reasoning_effort(&self) -> Result<Option<forge_domain::Effort>> {
             Ok(None)
         }

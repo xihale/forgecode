@@ -107,7 +107,7 @@ impl<S: Services + EnvironmentInfra<Config = forge_config::ForgeConfig>> AgentEx
                     }
                 },
                 ChatResponse::TaskReasoning { .. } => {}
-                ChatResponse::TaskComplete => {}
+                ChatResponse::TaskComplete { .. } => {}
                 ChatResponse::ToolCallStart { .. } => ctx.send(message).await?,
                 ChatResponse::ToolCallEnd(_) => ctx.send(message).await?,
                 ChatResponse::RetryAttempt { .. } => ctx.send(message).await?,

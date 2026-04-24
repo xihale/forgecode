@@ -50,6 +50,12 @@ impl Console {
         self.agent_state.clone()
     }
 
+    /// Updates the shared agent state to reflect a new active agent.
+    pub fn set_agent(&self, agent_id: AgentId) {
+        let mut state = self.agent_state.lock().unwrap();
+        state.current = agent_id;
+    }
+
     /// Low-level prompt that returns raw user input result
     pub fn prompt_raw(&self, prompt: &mut ForgePrompt) -> anyhow::Result<ReadResult> {
         let mut forge_editor = self.editor.lock().unwrap();
@@ -120,7 +126,9 @@ impl Console {
             None => return,
         };
 
-        let supported = api
+        // Only update when the API call succeeds; transient failures must not
+        // wipe out the previously resolved supported list and current effort.
+        if let Some(supported) = api
             .get_models()
             .await
             .ok()
@@ -130,13 +138,13 @@ impl Console {
                     .find(|m| m.id == model)
                     .map(|m| m.reasoning_efforts())
             })
-            .unwrap_or_default();
+        {
+            let api_effort = api.get_reasoning_effort().await.ok().flatten();
 
-        let api_effort = api.get_reasoning_effort().await.ok().flatten();
-
-        let mut state = self.effort_state.lock().unwrap();
-        state.supported = supported;
-        state.current = Self::clamp_effort(api_effort, &state.supported);
+            let mut state = self.effort_state.lock().unwrap();
+            state.supported = supported;
+            state.current = Self::clamp_effort(api_effort, &state.supported);
+        }
     }
 
     /// Clamps an effort to the supported set.

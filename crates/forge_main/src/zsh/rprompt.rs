@@ -287,7 +287,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn test_rprompt_with_context_percentage() {
         let actual = ZshRPrompt::default()
             .agent(Some(AgentId::new("forge")))
@@ -324,7 +323,7 @@ mod tests {
             .reasoning_effort(Some(Effort::Medium))
             .to_string();
 
-        let expected = " %B%F{240}\u{f167a} FORGE%f%b %F{240}\u{ec19} gpt-4%f %F{240}MEDIUM%f";
+        let expected = " %B%F{240}\u{f167a} FORGE%f%b %F{134}\u{ec19} gpt-4%f %F{240}MEDIUM%f";
         assert_eq!(actual, expected);
     }
 
