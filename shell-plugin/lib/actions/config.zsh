@@ -112,7 +112,8 @@ function _forge_action_model() {
 }
 
 # Action handler: Select model for shell mode.
-# Calls `forge config set shell <provider_id> <model_id>` on selection.
+# Persists to config via `forge config set shell` and sets session variables
+# so the current terminal session uses the new model immediately.
 function _forge_action_shell_model() {
     local input_text="$1"
     echo
@@ -129,6 +130,9 @@ function _forge_action_shell_model() {
 
         model_id=${model_id//[[:space:]]/}
         provider_id=${provider_id//[[:space:]]/}
+
+        _FORGE_SESSION_MODEL="$model_id"
+        _FORGE_SESSION_PROVIDER="$provider_id"
 
         _forge_exec config set shell "$provider_id" "$model_id"
     fi
@@ -199,11 +203,42 @@ function _forge_action_session_model() {
     local input_text="$1"
     echo
 
-    if _forge_select_model_pair "$input_text"; then
-        _FORGE_SESSION_MODEL="${reply[1]}"
-        _FORGE_SESSION_PROVIDER="${reply[2]}"
-        _forge_log success "Session model set to \033[1m${_FORGE_SESSION_MODEL}\033[0m (provider: \033[1m${_FORGE_SESSION_PROVIDER}\033[0m)"
+    local current_model current_provider provider_index
+    # Use session overrides as the starting selection if already set,
+    # otherwise fall back to the globally configured values.
+    if [[ -n "$_FORGE_SESSION_MODEL" ]]; then
+        current_model="$_FORGE_SESSION_MODEL"
+        provider_index=4
+    else
+        current_model=$($_FORGE_BIN config get model 2>/dev/null)
+        provider_index=3
     fi
+    if [[ -n "$_FORGE_SESSION_PROVIDER" ]]; then
+        current_provider="$_FORGE_SESSION_PROVIDER"
+        provider_index=4
+    else
+        current_provider=$($_FORGE_BIN config get provider 2>/dev/null)
+        provider_index=3
+    fi
+
+    local selected
+    selected=$(_forge_pick_model "Session Model ❯ " "$current_model" "$input_text" "$current_provider" "$provider_index")
+
+    if [[ -n "$selected" ]]; then
+        local model_id provider_display provider_id
+        # Extract fields separately to handle display names with spaces
+        model_id=$(echo "$selected" | awk -F '  +' '{print $1}')
+        provider_display=$(echo "$selected" | awk -F '  +' '{print $3}')
+        provider_id=$(echo "$selected" | awk -F '  +' '{print $4}')
+        model_id=${model_id//[[:space:]]/}
+        provider_id=${provider_id//[[:space:]]/}
+
+        _FORGE_SESSION_MODEL="$model_id"
+        _FORGE_SESSION_PROVIDER="$provider_id"
+
+        _forge_exec config set model "$provider_id" "$model_id"
+
+        _forge_log success "Session model set to \033[1m${model_id}\033[0m (provider: \033[1m${provider_id}\033[0m)"
 }
 
 # Action handler: Reload config by resetting all session-scoped overrides.
