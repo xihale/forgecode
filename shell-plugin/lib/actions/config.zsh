@@ -38,7 +38,66 @@ function _forge_action_agent() {
     fi
 }
 
-# Action handler: Select model for the current session only.
+# Helper: Open an fzf model picker and print the raw selected line.
+#
+# Model list columns (from `forge list models --porcelain`):
+#   1:model_id  2:model_name  3:provider(display)  4:provider_id(raw)  5:context  6:tools  7:image
+# The picker hides model_id (field 1) and provider_id (field 4) via --with-nth.
+#
+# Arguments:
+#   $1  prompt_text      - fzf prompt label (e.g. "Model ❯ ")
+#   $2  current_model    - model_id to pre-position the cursor on (may be empty)
+#   $3  input_text       - optional pre-fill query for fzf
+#   $4  current_provider - provider value to disambiguate when model names collide (may be empty)
+#   $5  provider_field   - which porcelain field to match the provider against
+#                          (3 for display name, 4 for raw id)
+#
+# Outputs the raw selected line to stdout, or nothing if cancelled.
+function _forge_pick_model() {
+    local prompt_text="$1"
+    local current_model="$2"
+    local input_text="$3"
+    local current_provider="${4:-}"
+    local provider_field="${5:-}"
+
+    local raw_output output
+    raw_output=$(CLICOLOR_FORCE=0 NO_COLOR=1 TERM=dumb $_FORGE_BIN list models --porcelain </dev/null 2>/dev/null)
+    output=$(printf '%s\n' "$raw_output" | tr '\r' '\n' | awk 'BEGIN { seen = 0 } /^ID[[:space:]]+MODEL[[:space:]]+PROVIDER/ { seen = 1 } seen { print }')
+
+    if [[ -z "$output" && -n "$raw_output" ]]; then
+        output="$raw_output"
+    fi
+
+    if [[ -z "$output" ]]; then
+        return 1
+    fi
+
+    local fzf_args=(
+        --delimiter="$_FORGE_DELIMITER"
+        --prompt="$prompt_text"
+        --with-nth="2,3,5.."
+    )
+
+    if [[ -n "$input_text" ]]; then
+        fzf_args+=(--query="$input_text")
+    fi
+
+    if [[ -n "$current_model" ]]; then
+        # Match on both model_id (field 1) and provider to disambiguate
+        # when the same model name exists across multiple providers
+        local index
+        if [[ -n "$current_provider" && -n "$provider_field" ]]; then
+            index=$(_forge_find_index "$output" "$current_model" 1 "$provider_field" "$current_provider")
+        else
+            index=$(_forge_find_index "$output" "$current_model" 1)
+        fi
+        fzf_args+=(--bind="start:pos($index)")
+    fi
+
+    printf '%s\n' "$output" | _forge_fzf --header-lines=1 "${fzf_args[@]}"
+}
+
+# Action handler: Select model (across all configured providers)
 # When the selected model belongs to a different provider, switches it first.
 function _forge_action_model() {
     local input_text="$1"
@@ -49,6 +108,29 @@ function _forge_action_model() {
         model_id="${reply[1]}"
         provider_id="${reply[2]}"
         _forge_exec config set model "$provider_id" "$model_id"
+    fi
+}
+
+# Action handler: Select model for shell mode.
+# Calls `forge config set shell <provider_id> <model_id>` on selection.
+function _forge_action_shell_model() {
+    local input_text="$1"
+    echo
+
+    local selected
+    selected=$(_forge_pick_model "Shell Model ❯ " "" "$input_text")
+
+    if [[ -n "$selected" ]]; then
+        # Field 1 = model_id (raw), field 4 = provider_id (raw)
+        local model_id provider_id
+        # Extract fields separately to handle display names with spaces
+        model_id=$(echo "$selected" | awk -F '  +' '{print $1}')
+        provider_id=$(echo "$selected" | awk -F '  +' '{print $4}')
+
+        model_id=${model_id//[[:space:]]/}
+        provider_id=${provider_id//[[:space:]]/}
+
+        _forge_exec config set shell "$provider_id" "$model_id"
     fi
 }
 
