@@ -115,6 +115,9 @@ pub struct UI<A: ConsoleWriter, F: Fn(ForgeConfig) -> A> {
     cli: Cli,
     spinner: SharedSpinner<A>,
     config: ForgeConfig,
+    /// Cached context length from the last successful `get_models()` call.
+    /// Used as a fallback when the models API is temporarily unavailable.
+    cached_context_length: Option<u64>,
     #[allow(dead_code)] // The guard is kept alive by being held in the struct
     _guard: forge_tracker::Guard,
 }
@@ -201,6 +204,35 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
 
         Ok(rows)
     }
+
+    /// Resolves the context length for the given model ID by looking up the
+    /// model list. Falls back to the cached value when the API call fails.
+    async fn get_context_length(&self, model_id: Option<&ModelId>) -> Option<u64> {
+        let mid = model_id?;
+        let fresh = self.api.get_models().await.ok().and_then(|models| {
+            models
+                .iter()
+                .find(|m| &m.id == mid)
+                .and_then(|m| m.context_length)
+        });
+        // Return the fresh value if available, otherwise fall back to the cache
+        fresh.or(self.cached_context_length)
+    }
+
+    /// Resolves model and context length in a single call.
+    ///
+    /// Returns `(model_id, context_length)`. Caches the context length so
+    /// that transient `get_models()` failures do not cause the display to
+    /// disappear.
+    async fn get_model_with_context_length(&mut self) -> (Option<ModelId>, Option<u64>) {
+        let agent = self.api.get_active_agent().await;
+        let model = self.get_agent_model(agent).await;
+        let context_length = self.get_context_length(model.as_ref()).await;
+        // Update the cache whenever we get a fresh value
+        if context_length.is_some() {
+            self.cached_context_length = context_length;
+        }
+        (model, context_length.or(self.cached_context_length))
     }
 
     /// Displays banner only if user is in interactive mode.
@@ -259,6 +291,10 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         let model = self.get_agent_model(Some(agent.id.clone())).await;
         self.update_model(model.clone());
 
+        // Sync the shared AgentState so the prompt renderer shows the correct
+        // agent name immediately on the next repaint.
+        self.console.set_agent(agent.id.clone());
+
         let name = agent.id.as_str().to_case(Case::UpperSnake).bold();
 
         let title = format!(
@@ -307,6 +343,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             spinner,
             markdown: MarkdownFormat::new(),
             config,
+            cached_context_length: None,
             _guard: forge_tracker::init_tracing(env.log_path(), TRACKER.clone())?,
         })
     }
@@ -4528,20 +4565,16 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                     writer.write_dimmed(&content)?;
                 }
             }
-            ChatResponse::TaskComplete => {
+            ChatResponse::TaskComplete { provider, model } => {
                 writer.finish()?;
                 if !self.shell_quiet_mode()
                     && let Some(conversation_id) = self.state.conversation_id
                 {
-                    let model_info = self
-                        .api
-                        .get_session_config()
-                        .await
-                        .map(|c| format!("{} · {}", c.provider, c.model));
-                    let sub = match model_info {
-                        Some(ref info) => format!("{} | {}", conversation_id.into_string(), info),
-                        None => conversation_id.into_string(),
-                    };
+                    let sub = format!(
+                        "{} | {} · {}",
+                        conversation_id.into_string(),
+                        provider, model
+                    );
                     self.writeln_title(TitleFormat::debug("Finished").sub_title(sub))?;
                 }
                 if let Some(format) = self.config.auto_dump.clone() {

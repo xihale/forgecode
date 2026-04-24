@@ -85,7 +85,7 @@ async fn test_followup_does_not_trigger_session_summary() {
         .chat_responses
         .iter()
         .flatten()
-        .any(|response| matches!(response, ChatResponse::TaskComplete));
+        .any(|response| matches!(response, ChatResponse::TaskComplete { .. }));
 
     assert!(!ctx.output.tools().is_empty(), "Context should've tools.");
     assert!(
@@ -398,7 +398,7 @@ async fn test_multiple_consecutive_tool_calls() {
         .chat_responses
         .into_iter()
         .filter_map(|response| response.ok())
-        .filter(|response| matches!(response, ChatResponse::TaskComplete))
+        .filter(|response| matches!(response, ChatResponse::TaskComplete { .. }))
         .count();
 
     assert_eq!(retry_attempts, 1, "Should complete the task");
@@ -560,7 +560,7 @@ async fn test_is_complete_when_stop_with_no_tool_calls() {
         .chat_responses
         .iter()
         .filter_map(|r| r.as_ref().ok())
-        .any(|response| matches!(response, ChatResponse::TaskComplete));
+        .any(|response| matches!(response, ChatResponse::TaskComplete { .. }));
 
     assert!(
         has_task_complete,
@@ -679,7 +679,7 @@ async fn test_complete_when_no_pending_todos() {
         .chat_responses
         .iter()
         .filter_map(|r| r.as_ref().ok())
-        .any(|response| matches!(response, ChatResponse::TaskComplete));
+        .any(|response| matches!(response, ChatResponse::TaskComplete { .. }));
 
     assert!(
         has_task_complete,
@@ -707,7 +707,7 @@ async fn test_complete_when_empty_todos() {
         .chat_responses
         .iter()
         .filter_map(|r| r.as_ref().ok())
-        .any(|response| matches!(response, ChatResponse::TaskComplete));
+        .any(|response| matches!(response, ChatResponse::TaskComplete { .. }));
 
     assert!(
         has_task_complete,

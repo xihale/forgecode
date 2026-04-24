@@ -296,6 +296,18 @@ mod tests {
     }
 
     #[test]
+    fn test_rprompt_with_context_percentage() {
+        let actual = ZshRPrompt::default()
+            .agent(Some(AgentId::new("forge")))
+            .token_count(Some(TokenCount::Actual(15000)))
+            .context_length(Some(100000))
+            .use_nerd_font(false)
+            .to_string();
+
+        assert!(actual.contains("15k (15%)"));
+    }
+
+    #[test]
     fn test_rprompt_with_reasoning_effort_active() {
         // Active state (tokens > 0) renders reasoning effort in YELLOW to the
         // right of the model.
@@ -320,7 +332,7 @@ mod tests {
             .reasoning_effort(Some(Effort::Medium))
             .to_string();
 
-        let expected = " %B%F{240}\u{f167a} FORGE%f%b %F{240}\u{ec19} gpt-4%f %F{240}MEDIUM%f";
+        let expected = " %B%F{240}\u{f167a} FORGE%f%b %F{134}\u{ec19} gpt-4%f %F{240}MEDIUM%f";
         assert_eq!(actual, expected);
     }
 
