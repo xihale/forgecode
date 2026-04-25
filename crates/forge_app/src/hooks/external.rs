@@ -272,6 +272,7 @@ fn seal_memfd(fd: std::os::fd::RawFd) -> std::io::Result<()> {
 /// ```json
 /// {"decision": "deny", "reason": "blocked by policy"}
 /// ```
+#[derive(Clone)]
 pub struct ExternalHookInterceptor {
     hooks: std::sync::Arc<Vec<PreparedHook>>,
     timeout_secs: u64,
@@ -297,7 +298,7 @@ impl ExternalHookInterceptor {
             .filter_map(|hook| match PreparedHook::prepare(hook.clone()) {
                 Ok(prepared) => Some(prepared),
                 Err(e) => {
-                    debug!(
+                    tracing::warn!(
                         hook = %hook.source().display(),
                         error = %e,
                         "Failed to prepare hook executable, skipping"

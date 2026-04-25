@@ -1031,6 +1031,16 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             }
         }
 
+        /// Result of resolving a user-supplied hook path.
+        struct ResolvedHook {
+            /// Canonical or normalized full path to the hook file.
+            full_path: std::path::PathBuf,
+            /// Relative path from `~/.forge/hooks/` (used as trust-store key).
+            relative: String,
+            /// Human-readable hook name (file stem).
+            name: String,
+        }
+
         /// Resolves a user-supplied path to a validated, canonical hook path.
         ///
         /// Tries the path as-is under the hooks base directory first, then
@@ -1039,7 +1049,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         fn resolve_and_validate_hook_path(
             path: &str,
             validate_fn: impl Fn(&std::path::Path) -> anyhow::Result<std::path::PathBuf>,
-        ) -> anyhow::Result<(std::path::PathBuf, String, String)> {
+        ) -> anyhow::Result<ResolvedHook> {
             let base = hooks_base_dir().ok_or_else(|| {
                 anyhow::anyhow!("Cannot determine home directory for hooks")
             })?;
@@ -1060,7 +1070,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 .map(|n: &std::ffi::OsStr| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| relative.clone());
 
-            Ok((full_path, relative, name))
+            Ok(ResolvedHook { full_path, relative, name })
         }
 
         match command {
@@ -1108,39 +1118,40 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 }
             }
             HookCommand::Trust { path } => {
-                let (full_path, relative, name) = resolve_and_validate_hook_path(
+                let resolved = resolve_and_validate_hook_path(
                     &path,
                     forge_app::hooks::trust::validate_hook_path,
                 )?;
 
                 let mut trust_store = TrustStore::load()?;
-                trust_store.trust(&relative, &full_path)?;
+                trust_store.trust(&resolved.relative, &resolved.full_path)?;
                 trust_store.save()?;
 
-                let hash = compute_file_hash(&full_path)?;
+                let hash = compute_file_hash(&resolved.full_path)?;
                 self.writeln_title(TitleFormat::info(format!(
-                    "Hook trusted: {name} ({:.16}...)",
-                    hash
+                    "Hook trusted: {} ({:.16}...)",
+                    resolved.name, hash
                 )))?;
             }
             HookCommand::Delete { path } => {
-                let (full_path, relative, name) = resolve_and_validate_hook_path(
+                let resolved = resolve_and_validate_hook_path(
                     &path,
                     forge_app::hooks::trust::validate_hook_path_for_delete,
                 )?;
 
                 // Remove the file if it still exists
-                if full_path.exists() {
-                    std::fs::remove_file(&full_path)?;
+                if resolved.full_path.exists() {
+                    std::fs::remove_file(&resolved.full_path)?;
                 }
 
                 // Remove from trust store regardless
                 let mut trust_store = TrustStore::load()?;
-                trust_store.untrust(&relative);
+                trust_store.untrust(&resolved.relative);
                 trust_store.save()?;
 
                 self.writeln_title(TitleFormat::info(format!(
-                    "Hook deleted: {name}"
+                    "Hook deleted: {}",
+                    resolved.name
                 )))?;
             }
         }
