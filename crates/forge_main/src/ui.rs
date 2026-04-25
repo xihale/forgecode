@@ -1353,11 +1353,15 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                     resolve_hook_by_name(&path)?
                 };
 
+                // Validate that the path is within the hooks directory (prevent path traversal)
+                let full_path = forge_app::hooks::trust::validate_hook_path(&full_path)
+                    .with_context(|| format!("Invalid hook path: {}", path))?;
+
                 let relative = relative_hook_path(&full_path)
                     .unwrap_or_else(|| full_path.display().to_string());
                 let name = full_path
                     .file_stem()
-                    .map(|n| n.to_string_lossy().to_string())
+                    .map(|n: &std::ffi::OsStr| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| relative.clone());
 
                 let mut trust_store = TrustStore::load()?;
@@ -1382,11 +1386,15 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                     resolve_hook_by_name(&path)?
                 };
 
+                // Validate that the path is within the hooks directory (prevent path traversal)
+                let full_path = forge_app::hooks::trust::validate_hook_path(&full_path)
+                    .with_context(|| format!("Invalid hook path: {}", path))?;
+
                 let relative = relative_hook_path(&full_path)
                     .unwrap_or_else(|| full_path.display().to_string());
                 let name = full_path
                     .file_stem()
-                    .map(|n| n.to_string_lossy().to_string())
+                    .map(|n: &std::ffi::OsStr| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| relative.clone());
 
                 // Remove the file if it exists

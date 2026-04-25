@@ -50,6 +50,43 @@ pub fn hooks_base_dir() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(".forge").join("hooks"))
 }
 
+/// Validates that a given path is within the hooks base directory.
+///
+/// This function canonicalizes both the input path and the base directory,
+/// then checks that the canonicalized path starts with the base directory.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The hooks base directory cannot be determined
+/// - The path cannot be canonicalized
+/// - The path is outside the hooks base directory (path traversal attack)
+pub fn validate_hook_path(path: &Path) -> Result<PathBuf> {
+    let base = hooks_base_dir().ok_or_else(|| {
+        anyhow::anyhow!("Cannot determine hooks base directory")
+    })?;
+
+    // Canonicalize both paths to resolve symlinks and normalize
+    let canonical_base = base.canonicalize().with_context(|| {
+        format!("Failed to canonicalize base directory: {}", base.display())
+    })?;
+
+    let canonical_path = path.canonicalize().with_context(|| {
+        format!("Failed to canonicalize path: {}", path.display())
+    })?;
+
+    // Check if the canonical path is within the base directory
+    if !canonical_path.starts_with(&canonical_base) {
+        return Err(anyhow::anyhow!(
+            "Path traversal detected: {} is outside hooks directory {}",
+            canonical_path.display(),
+            canonical_base.display()
+        ));
+    }
+
+    Ok(canonical_path)
+}
+
 /// Returns the path to the trust store file: `~/.forge/hooks/trust.json`.
 pub fn trust_store_path() -> Option<PathBuf> {
     hooks_base_dir().map(|dir| dir.join("trust.json"))
