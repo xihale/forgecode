@@ -12,52 +12,6 @@ use tracing::debug;
 /// Interval in seconds between sudo keepalive refreshes.
 const SUDO_KEEPALIVE_INTERVAL_SECS: u64 = 30; // 30 seconds
 
-/// Spawns a platform-specific child process that inhibits system sleep.
-///
-/// - **Linux**: uses `systemd-inhibit` to block the `sleep` and `idle` modes.
-/// - **macOS**: uses `caffeinate -s` to prevent sleep while on AC power.
-///
-/// On unsupported platforms the child exits immediately — the caller treats
-/// this as a no-op.
-fn spawn_inhibit_process() -> tokio::process::Child {
-    let mut cmd = if cfg!(target_os = "linux") {
-        let mut c = tokio::process::Command::new("systemd-inhibit");
-        c.args([
-            "--what",
-            "sleep:idle",
-            "--who",
-            "forge",
-            "--why",
-            "forge is running",
-            "--mode",
-            "block",
-            "sleep",
-            "infinity",
-        ]);
-        c
-    } else if cfg!(target_os = "macos") {
-        let mut c = tokio::process::Command::new("caffeinate");
-        c.arg("-s");
-        c
-    } else {
-        // Unsupported platform — spawn a process that exits immediately
-        let c = tokio::process::Command::new("true");
-        c
-    };
-    cmd.stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    cmd.spawn().unwrap_or_else(|_| {
-        // If the inhibit command is not available, fall back to a no-op.
-        tokio::process::Command::new("true")
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .expect("`true` should always be spawnable")
-    })
-}
-
 /// Builds a [`forge_domain::Environment`] from runtime context only.
 ///
 /// Only the five fields that cannot be sourced from [`ForgeConfig`] are set
@@ -124,9 +78,6 @@ fn apply_config_op(fc: &mut ForgeConfig, op: ConfigOperation) {
         ConfigOperation::SetSudo(enabled) => {
             fc.sudo = enabled;
         }
-        ConfigOperation::SetPreventSleep(enabled) => {
-            fc.prevent_sleep = enabled;
-        }
     }
 }
 
@@ -145,8 +96,6 @@ pub struct ForgeEnvironmentInfra {
     /// Handle for the background task that periodically refreshes the sudo
     /// timestamp so it does not expire during a long session.
     keepalive: Arc<tokio::sync::Mutex<Option<JoinHandle<()>>>>,
-    /// Handle for the background task that prevents system sleep/hibernate.
-    sleep_inhibit: Arc<tokio::sync::Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl ForgeEnvironmentInfra {
@@ -168,10 +117,7 @@ impl ForgeEnvironmentInfra {
             cache: Arc::new(std::sync::Mutex::new(Some(config))),
             sudo,
             keepalive: Arc::new(tokio::sync::Mutex::new(None)),
-            sleep_inhibit: Arc::new(tokio::sync::Mutex::new(None)),
         }
-        // Note: sleep inhibition is started lazily via `start_sleep_inhibition`
-        // because `new` is not async.
     }
 
     /// Returns the shared `sudo` flag so the command executor can observe it.
@@ -252,11 +198,6 @@ impl EnvironmentInfra for ForgeEnvironmentInfra {
                     // Sudo is session-scoped: update the in-memory flag only,
                     // do NOT persist to disk.
                 }
-                ConfigOperation::SetPreventSleep(enabled) => {
-                    self.refresh_sleep_inhibition(enabled).await;
-                    // Persist prevent_sleep to disk (not session-scoped).
-                    apply_config_op(&mut fc, ConfigOperation::SetPreventSleep(enabled));
-                }
                 other => apply_config_op(&mut fc, other),
             }
         }
@@ -317,43 +258,6 @@ impl ForgeEnvironmentInfra {
         }
     }
 
-    /// Starts or stops the system sleep/hibernate inhibition.
-    ///
-    /// When `enabled` is `true`, spawns a long-running child process that
-    /// holds a system-level sleep inhibition lock. The exact command depends
-    /// on the current platform:
-    ///
-    /// - **Linux**: `systemd-inhibit --what=sleep --who=forge --why="forge is running" --mode=block sleep infinity`
-    /// - **macOS**: `caffeinate -s`
-    ///
-    /// When `enabled` is `false`, aborts any running inhibition task (which
-    /// drops the child process and releases the lock).
-    pub(crate) async fn refresh_sleep_inhibition(&self, enabled: bool) {
-        let mut guard = self.sleep_inhibit.lock().await;
-        if let Some(handle) = guard.take() {
-            handle.abort();
-        }
-        if enabled {
-            let handle = tokio::spawn(async {
-                let mut child = spawn_inhibit_process();
-                // Wait for the child process indefinitely. If it exits
-                // (e.g. systemd-inhibit not available), simply return.
-                let _ = child.wait().await;
-            });
-            *guard = Some(handle);
-        }
-    }
-
-    /// Starts sleep inhibition if the config has `prevent_sleep = true`.
-    ///
-    /// Call this once after construction (from an async context).
-    pub async fn start_sleep_inhibition(&self) {
-        let enabled = self
-            .cached_config()
-            .map(|c| c.prevent_sleep)
-            .unwrap_or(true);
-        self.refresh_sleep_inhibition(enabled).await;
-    }
 }
 
 #[cfg(test)]
