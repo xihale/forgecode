@@ -119,24 +119,42 @@ pub fn validate_hook_path_for_delete(path: &Path) -> Result<PathBuf> {
         format!("Failed to canonicalize base directory: {}", base.display())
     })?;
 
-    // Normalize by joining to the base if the path is relative,
-    // otherwise use as-is.
-    let normalized = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        base.join(path)
-    };
+    // Always join to the non-canonical base so the result is compatible
+    // with `relative_hook_path`, which strips the non-canonical base.
+    let normalized = base.join(path);
 
-    // Simple traversal check on the normalized path.
-    if !normalized.starts_with(&canonical_base) {
+    // Lexically normalize the path to resolve `.` and `..` components
+    // without touching the filesystem (canonicalize requires existence).
+    let lexically_normalized: PathBuf = normalized.components().fold(
+        PathBuf::new(),
+        |mut acc, comp| {
+            match comp {
+                std::path::Component::ParentDir => {
+                    acc.pop();
+                }
+                std::path::Component::CurDir => {}
+                c => acc.push(c),
+            }
+            acc
+        },
+    );
+
+    // For the traversal check, also normalize against canonical_base.
+    // Since lexically_normalized is relative to `base` (not
+    // `canonical_base`), we canonicalize base and compare.
+    let canonical_normalized = canonical_base
+        .join(lexically_normalized
+            .strip_prefix(&base)
+            .unwrap_or(&lexically_normalized));
+    if !canonical_normalized.starts_with(&canonical_base) {
         return Err(anyhow::anyhow!(
             "Path traversal detected: {} is outside hooks directory {}",
-            normalized.display(),
+            lexically_normalized.display(),
             canonical_base.display()
         ));
     }
 
-    Ok(normalized)
+    Ok(lexically_normalized)
 }
 
 /// Returns the path to the trust store file: `~/.forge/hooks/trust.json`.
@@ -229,9 +247,10 @@ impl TrustStore {
             Err(e) => {
                 tracing::warn!(
                     path = %path.display(),
+                    error = %e,
                     "Malformed trust.json, treating all hooks as untrusted. \
-                     Old content can be recovered from the file before the next trust \
-                     operation overwrites it: {e}"
+                     Old content can be recovered from the file before the next \
+                     trust operation overwrites it."
                 );
                 Ok(Self::new())
             }
