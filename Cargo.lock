@@ -2163,6 +2163,7 @@ dependencies = [
  "dashmap 7.0.0-rc2",
  "derive_more",
  "derive_setters",
+ "dirs",
  "fake",
  "forge_config",
  "forge_display",
