@@ -2,11 +2,11 @@
 //!
 //! The `load_and_verify_hooks` function is called once at application startup.
 //! It discovers all hook scripts, verifies their integrity against the trust
-//! store, and returns only the paths of trusted hooks. The result is cached
-//! in memory for the entire session — no further disk I/O occurs during
-//! runtime.
+//! store, reads their content into memory, and returns [`CachedHook`] instances.
+//! The cached content is used for the entire session — zero disk I/O, zero
+//! TOCTOU risk at runtime.
 
-use std::path::PathBuf;
+use forge_domain::CachedHook;
 
 use crate::hooks::external::discover_hooks;
 use crate::hooks::trust::{HookTrustStatus, TrustStore, relative_hook_path};
@@ -75,17 +75,18 @@ fn truncate_list(names: &[String], max: usize) -> String {
     }
 }
 
-/// Discovers hooks for the given event, verifies trust, and returns only
-/// the paths of hooks that are safe to execute.
+/// Discovers hooks for the given event, verifies trust, reads their content
+/// into memory, and returns [`CachedHook`] instances for hooks that are safe
+/// to execute.
 ///
 /// For each discovered hook:
-/// - **Trusted** (hash matches) → included in result
+/// - **Trusted** (hash matches) → content read into memory, included in result
 /// - **Untrusted** (unknown script) → skipped with guidance printed
 /// - **Tampered** (hash mismatch) → high-danger warning, NOT loaded
 /// - **Missing** → skipped
 ///
 /// No interactive prompts — users manage trust via `forge hook trust/delete`.
-pub fn load_and_verify_hooks(event_name: &str) -> anyhow::Result<(Vec<PathBuf>, HookSummary)> {
+pub fn load_and_verify_hooks(event_name: &str) -> anyhow::Result<(Vec<CachedHook>, HookSummary)> {
     let all_hooks = discover_hooks(event_name);
     if all_hooks.is_empty() {
         return Ok((Vec::new(), HookSummary::default()));
@@ -111,7 +112,16 @@ pub fn load_and_verify_hooks(event_name: &str) -> anyhow::Result<(Vec<PathBuf>, 
         match status {
             HookTrustStatus::Trusted => {
                 tracing::debug!(hook = %relative, "Hook trusted");
-                trusted_hooks.push(hook_path.clone());
+                match CachedHook::from_path(hook_path.clone()) {
+                    Ok(cached) => trusted_hooks.push(cached),
+                    Err(e) => {
+                        tracing::warn!(
+                            hook = %relative,
+                            error = %e,
+                            "Failed to read hook content, skipping"
+                        );
+                    }
+                }
             }
             HookTrustStatus::Untrusted => {
                 untrusted_names.push(hook_name(hook_path));
@@ -161,7 +171,7 @@ pub fn load_and_verify_hooks(event_name: &str) -> anyhow::Result<(Vec<PathBuf>, 
         trust_store.save()?;
     }
 
-    let loaded_names: Vec<String> = trusted_hooks.iter().map(|p| hook_name(p)).collect();
+    let loaded_names: Vec<String> = trusted_hooks.iter().map(|h| hook_name(h.source())).collect();
 
     let summary = HookSummary {
         loaded: loaded_names,

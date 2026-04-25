@@ -25,8 +25,11 @@ use crate::API;
 pub struct ForgeAPI<S, F> {
     services: Arc<S>,
     infra: Arc<F>,
-    /// Hook paths verified at startup, cached for the entire session.
-    cached_hooks: Vec<PathBuf>,
+    /// Hook content verified and read into memory at startup, cached for
+    /// the entire session. Wrapped in Arc to avoid cloning on every chat()
+    /// call. Scripts are executed from in-memory file descriptors — zero
+    /// disk I/O, zero TOCTOU risk.
+    cached_hooks: Arc<Vec<forge_domain::CachedHook>>,
     /// Hook verification summary for display after banner.
     hook_summary: forge_app::HookSummary,
 }
@@ -36,7 +39,7 @@ impl<A, F> ForgeAPI<A, F> {
         Self {
             services,
             infra,
-            cached_hooks: Vec::new(),
+            cached_hooks: Arc::new(Vec::new()),
             hook_summary: forge_app::HookSummary::default(),
         }
     }
@@ -65,7 +68,7 @@ impl ForgeAPI<ForgeServices<ForgeRepo<ForgeInfra>>, ForgeRepo<ForgeInfra>> {
         let mut api = ForgeAPI::new(app, repo);
         let (hooks, summary) = forge_app::load_and_verify_hooks("toolcall-start")
             .unwrap_or_default();
-        api.cached_hooks = hooks;
+        api.cached_hooks = Arc::new(hooks);
         api.hook_summary = summary;
         api
     }
@@ -159,7 +162,9 @@ impl<
             .get_active_agent_id()
             .await?
             .unwrap_or_default();
-        // cached_hooks is populated during init() — zero disk I/O at runtime.
+        // cached_hooks contains hook script content read into memory at init()
+        // time. Scripts are executed from anonymous in-memory file descriptors
+        // — zero disk I/O, zero TOCTOU risk.
         let cached_hooks = self.cached_hooks.clone();
         self.app().chat(agent_id, chat, cached_hooks).await
     }

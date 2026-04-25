@@ -2144,7 +2144,6 @@ dependencies = [
  "forge_stream",
  "futures",
  "serde_json",
- "tokio",
  "url",
 ]
 
@@ -2180,6 +2179,7 @@ dependencies = [
  "include_dir",
  "insta",
  "lazy_static",
+ "libc",
  "merge",
  "pretty_assertions",
  "regex",
@@ -2286,6 +2286,7 @@ dependencies = [
  "serde_yml",
  "strum 0.28.0",
  "strum_macros 0.28.0",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",

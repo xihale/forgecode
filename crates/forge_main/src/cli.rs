@@ -717,13 +717,17 @@ pub enum HookCommand {
 
     /// Trust a hook script by computing and storing its hash.
     Trust {
-        /// Relative path of the hook (e.g. toolcall-start.d/01-hook.sh).
+        /// Path of the hook to trust. Can be either:
+        /// - Relative path from ~/.forge/hooks/ (e.g. toolcall-start.d/01-hook.sh)
+        /// - Bare filename if unique (e.g. 01-hook.sh)
         path: String,
     },
 
     /// Delete a hook script and remove it from the trust store.
     Delete {
-        /// Relative path of the hook (e.g. toolcall-start.d/01-hook.sh).
+        /// Path of the hook to delete. Can be either:
+        /// - Relative path from ~/.forge/hooks/ (e.g. toolcall-start.d/01-hook.sh)
+        /// - Bare filename if unique (e.g. 01-hook.sh)
         path: String,
     },
 }
