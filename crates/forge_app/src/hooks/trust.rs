@@ -139,13 +139,14 @@ pub fn validate_hook_path_for_delete(path: &Path) -> Result<PathBuf> {
         },
     );
 
-    // For the traversal check, also normalize against canonical_base.
-    // Since lexically_normalized is relative to `base` (not
-    // `canonical_base`), we canonicalize base and compare.
-    let canonical_normalized = canonical_base
-        .join(lexically_normalized
-            .strip_prefix(&base)
-            .unwrap_or(&lexically_normalized));
+    // For the traversal check, verify the lexically-normalized path
+    // is within canonical_base. Since lexically_normalized was built from
+    // base.join(path), it always starts with `base` — strip_prefix cannot
+    // fail unless there is a logic bug.
+    let relative = lexically_normalized
+        .strip_prefix(&base)
+        .expect("lexically_normalized was built from base.join(path), so it must start with base");
+    let canonical_normalized = canonical_base.join(relative);
     if !canonical_normalized.starts_with(&canonical_base) {
         return Err(anyhow::anyhow!(
             "Path traversal detected: {} is outside hooks directory {}",
@@ -206,10 +207,28 @@ pub fn compute_file_hash(path: &Path) -> Result<String> {
 
 /// Returns the relative path of a hook from `~/.forge/hooks/`, or `None` if
 /// the base directory cannot be resolved or the path is not under it.
+///
+/// Tries the non-canonical base first (the common case). If that fails (e.g.
+/// `hook_path` was canonicalized and `HOME` is a symlink), falls back to the
+/// canonical base so that symlinked home directories still produce correct
+/// relative keys.
 pub fn relative_hook_path(hook_path: &Path) -> Option<String> {
     let base = hooks_base_dir()?;
-    hook_path
+
+    // Fast path: non-canonical base matches (most common)
+    if let Some(relative) = hook_path
         .strip_prefix(&base)
+        .ok()
+        .and_then(|r| r.to_str().map(|s| s.to_string()))
+    {
+        return Some(relative);
+    }
+
+    // Slow path: hook_path may be canonicalized while base is not (e.g. HOME
+    // is a symlink). Try stripping the canonical base instead.
+    let canonical_base = base.canonicalize().ok()?;
+    hook_path
+        .strip_prefix(&canonical_base)
         .ok()
         .and_then(|r| r.to_str().map(|s| s.to_string()))
 }
