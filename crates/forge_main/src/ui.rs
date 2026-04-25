@@ -117,6 +117,16 @@ pub struct UI<A: ConsoleWriter, F: Fn(ForgeConfig) -> A> {
     _guard: forge_tracker::Guard,
 }
 
+/// Result of resolving a user-supplied hook path.
+struct ResolvedHook {
+    /// Canonical or normalized full path to the hook file.
+    full_path: std::path::PathBuf,
+    /// Relative path from `~/.forge/hooks/` (used as trust-store key).
+    relative: String,
+    /// Human-readable hook name (file stem).
+    name: String,
+}
+
 impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI<A, F> {
     /// Writes a line to the console output
     /// Takes anything that implements ToString trait
@@ -1029,16 +1039,6 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                     ))
                 }
             }
-        }
-
-        /// Result of resolving a user-supplied hook path.
-        struct ResolvedHook {
-            /// Canonical or normalized full path to the hook file.
-            full_path: std::path::PathBuf,
-            /// Relative path from `~/.forge/hooks/` (used as trust-store key).
-            relative: String,
-            /// Human-readable hook name (file stem).
-            name: String,
         }
 
         /// Resolves a user-supplied path to a validated, canonical hook path.
