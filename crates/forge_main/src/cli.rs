@@ -705,13 +705,6 @@ pub enum ConfigSetField {
         /// When `true`, every shell command is automatically prefixed with `sudo`.
         enabled: bool,
     },
-    /// Enable or disable system sleep/hibernate inhibition while forge is
-    /// running.
-    PreventSleep {
-        /// When `true`, forge prevents the system from sleeping or
-        /// hibernating for the duration of the session.
-        enabled: bool,
-    },
 }
 
 /// Type-safe subcommands for `forge config get`.
@@ -735,8 +728,6 @@ pub enum ConfigGetField {
     ReasoningEffort,
     /// Get whether `sudo` mode is active for shell commands.
     Sudo,
-    /// Get whether system sleep/hibernate inhibition is active.
-    PreventSleep,
 }
 
 /// Command group for conversation management.

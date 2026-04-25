@@ -220,9 +220,6 @@ mod tests {
                         ConfigOperation::SetSudo(_) => {
                             // Sudo is session-scoped, not persisted to config
                         }
-                        ConfigOperation::SetPreventSleep(_) => {
-                            // Sleep inhibition is handled at infra level
-                        }
                     }
                 }
                 Ok(())
