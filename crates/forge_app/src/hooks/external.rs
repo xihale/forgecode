@@ -17,31 +17,35 @@ use tracing::debug;
 // PreparedHook — pre-created executable, kept alive for the entire session
 // ---------------------------------------------------------------------------
 
-/// A hook whose executable has been pre-created at construction time.
+/// A hook whose executable form is determined by platform.
 ///
-/// On Linux, the `memfd` file descriptor is kept alive for the entire session,
-/// so `/proc/self/fd/<n>` remains valid for every `spawn()` call. On non-Linux,
-/// a temp file is created and cleaned up on drop.
-///
-/// Because the executable is created once and reused, there is no per-call
-/// memfd create/seal overhead and no fd-lifetime race condition.
+/// On Linux, a sealed memfd is created once at construction and reused for
+/// every `spawn()` call. On non-Linux (macOS, Windows, etc.), no pre-created
+/// executable exists — the original source file is spawned directly after
+/// verifying its content hash matches the cached version.
 enum Executable {
     /// Linux: `/proc/self/fd/<n>` backed by a sealed memfd. The `Memfd` guard
     /// keeps the fd alive — it must NOT be dropped until the interceptor is
     /// dropped (which happens at session end, long after any child has exec'd).
     #[cfg(target_os = "linux")]
     Memfd { path: PathBuf, _guard: Memfd },
-    /// Non-Linux: a temp file on disk. Cleaned up on drop.
+    /// Non-Linux: the original source path. Content hash is verified before
+    /// each spawn to mitigate TOCTOU attacks.
     #[cfg(not(target_os = "linux"))]
-    TempFile { path: PathBuf },
+    Source { expected_hash: String },
 }
 
-/// A fully-prepared hook ready for execution. The executable is created once at
-/// construction and reused for every `intercept()` call.
+/// A fully-prepared hook ready for execution.
+///
+/// On Linux, a sealed memfd is created once at construction and reused for
+/// every `spawn()` call. On non-Linux, the original source file is spawned
+/// directly after verifying its content hash matches the cached version.
 struct PreparedHook {
-    /// Original source path — kept for logging/diagnostics.
+    /// Original source path — kept for logging/diagnostics and used as the
+    /// executable path on non-Linux.
     source: PathBuf,
-    /// Pre-created executable (memfd on Linux, temp-file elsewhere).
+    /// Pre-created executable (memfd on Linux) or hash-verified source path
+    /// (non-Linux).
     executable: Executable,
 }
 
@@ -49,21 +53,49 @@ impl PreparedHook {
     /// Prepares an executable from cached hook content.
     ///
     /// On Linux, creates a sealed memfd and returns `/proc/self/fd/<n>`.
-    /// On non-Linux, writes content to a temp file.
+    /// On non-Linux, stores the expected content hash for verification at
+    /// spawn time.
     fn prepare(hook: CachedHook) -> std::io::Result<Self> {
         let source = hook.source().to_path_buf();
         let executable = prepare_executable(&hook)?;
         Ok(Self { source, executable })
     }
 
-    /// Spawns the hook script as a child process, reusing the pre-created
-    /// executable.
+    /// Spawns the hook script as a child process.
+    ///
+    /// On Linux, reuses the pre-created memfd path. On non-Linux, verifies
+    /// the on-disk content hash matches the cached version before spawning
+    /// the original source file directly.
     fn spawn(&self) -> std::io::Result<tokio::process::Child> {
         let exe_path = match &self.executable {
             #[cfg(target_os = "linux")]
-            Executable::Memfd { path, .. } => path,
+            Executable::Memfd { path, .. } => path.clone(),
             #[cfg(not(target_os = "linux"))]
-            Executable::TempFile { path } => path,
+            Executable::Source { expected_hash } => {
+                let actual_hash =
+                    super::trust::compute_file_hash(&self.source).map_err(|e| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!(
+                                "Hook integrity check failed for {}: {}",
+                                self.source.display(),
+                                e
+                            ),
+                        )
+                    })?;
+                if actual_hash != *expected_hash {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!(
+                            "Hook integrity check failed for {}: content hash mismatch (expected {}, got {})",
+                            self.source.display(),
+                            expected_hash,
+                            actual_hash
+                        ),
+                    ));
+                }
+                self.source.clone()
+            }
         };
         Command::new(exe_path)
             .stdin(Stdio::piped())
@@ -74,25 +106,14 @@ impl PreparedHook {
     }
 }
 
-impl Drop for PreparedHook {
-    fn drop(&mut self) {
-        // For the TempFile variant, clean up the on-disk file.
-        // The Memfd variant is cleaned up automatically by the OwnedFd drop.
-        #[cfg(not(target_os = "linux"))]
-        if let Executable::TempFile { path } = &self.executable {
-            let _ = std::fs::remove_file(path);
-        }
-    }
-}
-
 /// Prepares an executable from cached hook content.
 ///
 /// On Linux: creates a `memfd`, writes content, seals it, and returns
 /// `/proc/self/fd/<n>` for execution. The `Memfd` guard keeps the file
 /// descriptor alive for the entire session.
 ///
-/// On non-Linux: writes content to a temp file and returns its path.
-/// The file is cleaned up when `PreparedHook` is dropped.
+/// On non-Linux: computes the content hash and returns a `Source` variant
+/// that will verify integrity before each spawn.
 #[cfg(target_os = "linux")]
 fn prepare_executable(hook: &CachedHook) -> std::io::Result<Executable> {
     let name = hook
@@ -138,32 +159,9 @@ fn prepare_executable(hook: &CachedHook) -> std::io::Result<Executable> {
 
 #[cfg(not(target_os = "linux"))]
 fn prepare_executable(hook: &CachedHook) -> std::io::Result<Executable> {
-    use std::io::Write;
-
-    let mut temp = tempfile::Builder::new()
-        .prefix("forge-hook-")
-        .suffix(
-            hook.source()
-                .extension()
-                .map(|e| format!(".{}", e.to_string_lossy()))
-                .as_deref()
-                .unwrap_or(".sh"),
-        )
-        .tempfile()?;
-
-    temp.write_all(hook.content())?;
-    temp.as_file_mut().sync_all()?;
-
-    // Persist the file to disk (cleaned up in PreparedHook::drop)
-    let (_, path) = temp.keep()?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))?;
-    }
-
-    Ok(Executable::TempFile { path })
+    let expected_hash = super::trust::compute_file_hash(hook.source())
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    Ok(Executable::Source { expected_hash })
 }
 
 // ---------------------------------------------------------------------------
@@ -247,9 +245,12 @@ fn seal_memfd(fd: std::os::fd::RawFd) -> std::io::Result<()> {
 /// Interceptor that executes external hook scripts to modify tool calls.
 ///
 /// At construction time, the full content of every hook script is read into
-/// memory and pre-compiled into an executable form (memfd on Linux, temp-file
-/// on non-Linux). At runtime, `intercept()` spawns each pre-compiled executable
-/// — zero disk I/O, zero TOCTOU risk, zero per-call memfd overhead.
+/// memory. On Linux, each hook is pre-compiled into a sealed memfd for
+/// zero-TOCTOU execution. On non-Linux, the content hash is stored and
+/// verified before each spawn to detect tampering.
+///
+/// At runtime, `intercept()` spawns each executable — zero per-call memfd
+/// overhead on Linux, hash-verified direct execution on non-Linux.
 ///
 /// # Hook protocol
 ///
