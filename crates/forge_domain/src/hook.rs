@@ -369,7 +369,7 @@ impl Hook {
             on_toolcall_start: self.on_toolcall_start.and(other.on_toolcall_start),
             on_toolcall_end: self.on_toolcall_end.and(other.on_toolcall_end),
             on_reasoning: self.on_reasoning.and(other.on_reasoning),
-            interceptor: self.interceptor,
+            interceptor: Box::new(CombinedInterceptor(self.interceptor, other.interceptor)),
         }
     }
 }
@@ -472,6 +472,26 @@ impl<T: Send + Sync> EventHandle<T> for CombinedHandler<T> {
         self.0.handle(event, conversation).await?;
         // Run the second handler
         self.1.handle(event, conversation).await
+    }
+}
+
+/// An interceptor that combines two interceptors with sequential execution
+///
+/// Runs the first interceptor, then runs the second interceptor.
+struct CombinedInterceptor(Box<dyn ToolCallInterceptor>, Box<dyn ToolCallInterceptor>);
+
+#[async_trait]
+impl ToolCallInterceptor for CombinedInterceptor {
+    async fn intercept(
+        &self,
+        tool_call: &mut ToolCallFull,
+        agent: &Agent,
+        model_id: &ModelId,
+    ) -> anyhow::Result<()> {
+        // Run the first interceptor
+        self.0.intercept(tool_call, agent, model_id).await?;
+        // Run the second interceptor
+        self.1.intercept(tool_call, agent, model_id).await
     }
 }
 
