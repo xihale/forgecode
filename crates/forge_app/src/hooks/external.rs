@@ -461,7 +461,7 @@ pub fn discover_hooks(event_name: &str) -> Vec<PathBuf> {
             path.is_file()
         })
         .filter(|path| {
-            // On Unix, check if the file is executable
+            // On Unix, only include files with the executable bit set
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
@@ -469,11 +469,12 @@ pub fn discover_hooks(event_name: &str) -> Vec<PathBuf> {
                     .map(|m| m.permissions().mode() & 0o111 != 0)
                     .unwrap_or(false)
             }
+            // On non-Unix, include all regular files — the OS determines
+            // executability via file association at spawn time
             #[cfg(not(unix))]
             {
-                // On non-Unix, include files with common script extensions
-                path.extension()
-                    .is_some_and(|ext| ext == "sh" || ext == "bash" || ext == "py")
+                let _ = path;
+                true
             }
         })
         .collect();

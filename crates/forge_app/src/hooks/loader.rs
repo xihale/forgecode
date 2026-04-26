@@ -162,7 +162,10 @@ pub fn load_and_verify_hooks(event_name: &str) -> anyhow::Result<(Vec<CachedHook
                 store_dirty = true;
             }
             HookTrustStatus::Missing => {
-                // File was discovered but disappeared — skip
+                tracing::warn!(
+                    path = %relative,
+                    "Hook file not found"
+                );
             }
         }
     }

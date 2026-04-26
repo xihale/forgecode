@@ -136,7 +136,7 @@ At startup, `load_and_verify_hooks()` checks each discovered hook against `~/.fo
 | `Trusted` | SHA-256 matches stored hash | Load content into `CachedHook` |
 | `Untrusted` | No entry in trust store | Skip, print guidance |
 | `Tampered` | SHA-256 mismatch | Print DANGER warning, remove from trust store, do NOT load |
-| `Missing` | File disappeared | Skip silently |
+| `Missing` | File disappeared | Skip with warning |
 
 Trust is managed via CLI:
 - `forge hook trust <path>` -- compute hash, store in `trust.json`
@@ -193,7 +193,7 @@ Each hook execution has a configurable timeout (default 30 seconds). On timeout,
 | Platform | Discovery Method |
 |----------|-----------------|
 | Unix (Linux, macOS) | Check executable (`x`) permission bit on file |
-| Non-Unix (Windows) | Filter by extension: `.sh`, `.bash`, `.py` |
+| Non-Unix (Windows) | Include all regular files; OS determines executability via file association |
 
 ### Hook Execution
 
@@ -230,12 +230,86 @@ The `<path>` argument accepts:
 - Relative path from `~/.forge/hooks/` (e.g. `toolcall-start.d/01-hook.sh`)
 - Bare filename if unique (e.g. `01-hook.sh`)
 
-## Example Hook
+## Example Hooks
+
+### 1. Deny dangerous shell commands
+
+Block shell commands that match dangerous patterns:
 
 ```bash
 #!/bin/bash
-# ~/.forge/hooks/toolcall-start.d/01-prefix-shell.sh
-# Prefix all shell commands with 'rtk' for audit logging
+# ~/.forge/hooks/toolcall-start.d/01-block-dangerous.sh
+# Deny shell commands containing rm -rf, force push, or drop database
+
+read input
+tool_name=$(echo "$input" | jq -r '.tool_name')
+
+if [ "$tool_name" = "shell" ]; then
+    cmd=$(echo "$input" | jq -r '.tool_input.command')
+    case "$cmd" in
+        *"rm -rf"*|*"rm -r /"*|*"force push"*|*"DROP DATABASE"*|*"DROP TABLE"*)
+            echo "{\"decision\":\"deny\",\"reason\":\"blocked dangerous command: $cmd\"}"
+            ;;
+        *)
+            echo '{"decision":"allow"}'
+            ;;
+    esac
+else
+    echo '{"decision":"allow"}'
+fi
+```
+
+### 2. Dry-run validation
+
+Run a dry-run of the command to validate arguments before allowing execution:
+
+```bash
+#!/bin/bash
+# ~/.forge/hooks/toolcall-start.d/02-dry-run-validate.sh
+# Dry-run commands that support it (ffmpeg, rsync, etc.) to catch bad arguments
+
+read input
+tool_name=$(echo "$input" | jq -r '.tool_name')
+
+if [ "$tool_name" != "shell" ]; then
+    echo '{"decision":"allow"}'
+    exit 0
+fi
+
+cmd=$(echo "$input" | jq -r '.tool_input.command')
+
+case "$cmd" in
+    ffmpeg*\ -y*|ffmpeg*\ --yes*)
+        # ffmpeg: run without output files to validate arguments
+        dry_cmd=$(echo "$cmd" | sed 's/ffmpeg/ffmpeg -nostdin -hide_banner/')
+        if ! $dry_cmd -f lavfi -i nullsrc=s=256x256:d=0.1 -f null - 2>/dev/null; then
+            echo "{\"decision\":\"deny\",\"reason\":\"ffmpeg dry-run failed: invalid arguments\"}"
+            exit 0
+        fi
+        ;;
+    rsync\ --dry-run*|rsync\ -n*)
+        # Already a dry-run, allow as-is
+        ;;
+    rsync\ *)
+        # rsync: run with --dry-run to validate
+        if ! $(echo "$cmd" | sed 's/rsync/rsync --dry-run/') 2>/dev/null; then
+            echo "{\"decision\":\"deny\",\"reason\":\"rsync dry-run failed: invalid arguments\"}"
+            exit 0
+        fi
+        ;;
+esac
+
+echo '{"decision":"allow"}'
+```
+
+### 3. Require command prefix
+
+Prefix all shell commands with a wrapper (e.g., `rtk` for audit logging):
+
+```bash
+#!/bin/bash
+# ~/.forge/hooks/toolcall-start.d/03-prefix-shell.sh
+# Wrap all shell commands with 'rtk' for audit logging
 
 read input
 tool_name=$(echo "$input" | jq -r '.tool_name')
@@ -248,11 +322,75 @@ else
 fi
 ```
 
-After placing the script:
+### 4. Deny reading sensitive files
+
+Prevent the LLM from reading files matching sensitive paths:
+
 ```bash
-chmod +x ~/.forge/hooks/toolcall-start.d/01-prefix-shell.sh
-forge hook trust toolcall-start.d/01-prefix-shell.sh
+#!/bin/bash
+# ~/.forge/hooks/toolcall-start.d/04-protect-secrets.sh
+# Deny file reads from sensitive directories
+
+read input
+tool_name=$(echo "$input" | jq -r '.tool_name')
+
+if [ "$tool_name" = "read" ]; then
+    path=$(echo "$input" | jq -r '.tool_input.file_path')
+    case "$path" in
+        *"/.env"*|*"/.ssh/"*|*"/.gnupg/"*|*"/.aws/"*|*"/credentials"*|*"/secrets/"*)
+            echo "{\"decision\":\"deny\",\"reason\":\"access denied: $path contains sensitive data\"}"
+            ;;
+        *)
+            echo '{"decision":"allow"}'
+            ;;
+    esac
+else
+    echo '{"decision":"allow"}'
+fi
 ```
+
+### 5. Node version check
+
+Deny shell commands if the system Node.js version is below 22:
+
+```bash
+#!/bin/bash
+# ~/.forge/hooks/toolcall-start.d/05-node-version-check.sh
+# Deny shell commands if Node.js < 22 is installed
+
+read input
+tool_name=$(echo "$input" | jq -r '.tool_name')
+
+if [ "$tool_name" != "shell" ]; then
+    echo '{"decision":"allow"}'
+    exit 0
+fi
+
+node_version=$(node --version 2>/dev/null) || {
+    echo '{"decision":"allow"}'
+    exit 0
+}
+
+# node --version outputs e.g. "v22.1.0"
+major=$(echo "$node_version" | sed 's/^v//;s/\..*//')
+
+if [ "$major" -lt 22 ]; then
+    echo "{\"decision\":\"deny\",\"reason\":\"Node.js $node_version is below minimum required v22\"}"
+else
+    echo '{"decision":"allow"}'
+fi
+```
+
+### Setting up a hook
+
+After placing a hook script:
+
+```bash
+chmod +x ~/.forge/hooks/toolcall-start.d/<hook-name>.sh
+forge hook trust toolcall-start.d/<hook-name>.sh
+```
+
+Multiple hooks execute in alphabetical filename order. Use numeric prefixes to control ordering (e.g., `01-`, `02-`, `03-`).
 
 ## Architecture Trade-offs
 
