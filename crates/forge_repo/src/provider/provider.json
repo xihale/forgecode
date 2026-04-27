@@ -1762,12 +1762,9 @@
   {
     "id": "lm_studio",
     "api_key_vars": "LM_STUDIO_API_KEY",
-    "url_param_vars": [
-      "LM_STUDIO_URL",
-      "LM_STUDIO_PORT"
-    ],
-    "response_type": "OpenAI",
-    "url": "{{LM_STUDIO_URL}}:{{LM_STUDIO_PORT}}/v1/chat/completions",
+    "url_param_vars": ["LM_STUDIO_URL", "LM_STUDIO_PORT"],
+    "response_type": "OpenAIResponses",
+    "url": "{{LM_STUDIO_URL}}:{{LM_STUDIO_PORT}}/v1/responses",
     "models": "{{LM_STUDIO_URL}}:{{LM_STUDIO_PORT}}/v1/models",
     "auth_methods": [
       "api_key"
@@ -3841,11 +3838,119 @@
     "url_param_vars": [],
     "response_type": "OpenCode",
     "url": "https://opencode.ai/zen/go",
-    "models": "https://opencode.ai/zen/go/v1/models",
-
-    "auth_methods": [
-      "api_key"
-    ]
+    "models": [
+      {
+        "id": "deepseek-v4-flash",
+        "name": "DeepSeek V4 Flash",
+        "description": "DeepSeek V4 Flash model",
+        "context_length": 1000000,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": ["text"]
+      },
+      {
+        "id": "deepseek-v4-pro",
+        "name": "DeepSeek V4 Pro",
+        "description": "DeepSeek V4 Pro model",
+        "context_length": 1000000,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": ["text"]
+      },
+      {
+        "id": "glm-5",
+        "name": "GLM 5",
+        "description": "Zhipu AI's flagship model with 204K context, reasoning, and tool calling capabilities",
+        "context_length": 204800,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": ["text"]
+      },
+      {
+        "id": "glm-5.1",
+        "name": "GLM 5.1",
+        "description": "Zhipu AI's latest flagship model with 204K context, reasoning, and tool calling capabilities",
+        "context_length": 204800,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": ["text"]
+      },
+      {
+        "id": "kimi-k2.5",
+        "name": "Kimi K2.5",
+        "description": "Moonshot AI's flagship model with 262K context, vision, and reasoning capabilities",
+        "context_length": 262144,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": ["text", "image"]
+      },
+      {
+        "id": "mimo-v2-pro",
+        "name": "MiMo V2 Pro",
+        "description": "Xiaomi's flagship foundation model with 1M context, reasoning, and tool calling capabilities",
+        "context_length": 1000000,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": ["text"]
+      },
+      {
+        "id": "mimo-v2-omni",
+        "name": "MiMo V2 Omni",
+        "description": "Xiaomi's omni-modal model that natively processes image, video, and audio inputs",
+        "context_length": 262100,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": ["text", "image"]
+      },
+      {
+        "id": "minimax-m2.7",
+        "name": "MiniMax M2.7",
+        "description": "MiniMax's latest model with enhanced reasoning and 204K context",
+        "context_length": 204800,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": ["text"]
+      },
+      {
+        "id": "minimax-m2.5",
+        "name": "MiniMax M2.5",
+        "description": "MiniMax's model with 204K context and reasoning capabilities",
+        "context_length": 204800,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": ["text"]
+      },
+      {
+        "id": "qwen3.6-plus",
+        "name": "Qwen3.6 Plus",
+        "description": "Advanced reasoning model with enhanced capabilities",
+        "context_length": 1000000,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": ["text", "image"]
+      },
+      {
+        "id": "kimi-k2.6",
+        "name": "Kimi K2.6",
+        "description": "Moonshot AI Kimi K2.6 model with multimodal input, reasoning, and tool calling capabilities",
+        "context_length": 262144,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": ["text", "image"]
+      }
+    ],
+    "auth_methods": ["api_key"]
   },
   {
     "id": "alibaba_coding",
@@ -4351,6 +4456,15 @@
         "input_modalities": ["text", "image"]
       }
     ],
+    "auth_methods": ["api_key"]
+  },
+  {
+    "id": "nvidia",
+    "api_key_vars": "NVIDIA_API_KEY",
+    "url_param_vars": [],
+    "response_type": "OpenAI",
+    "url": "https://integrate.api.nvidia.com/v1/chat/completions",
+    "models": "https://integrate.api.nvidia.com/v1/models",
     "auth_methods": ["api_key"]
   }
 ]

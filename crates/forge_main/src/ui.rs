@@ -904,6 +904,11 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 }
                 return Ok(());
             }
+            TopLevelCommand::Logs(args) => {
+                let log_dir = self.api.environment().log_path();
+                crate::logs::run(args, log_dir).await?;
+                return Ok(());
+            }
         }
         Ok(())
     }

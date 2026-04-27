@@ -10,6 +10,7 @@ mod fish;
 mod highlighter;
 mod info;
 mod input;
+mod logs;
 mod model;
 mod oauth_callback;
 mod porcelain;

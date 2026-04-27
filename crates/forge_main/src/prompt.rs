@@ -447,4 +447,26 @@ mod tests {
         assert!(actual.contains("0.01"));
         assert!(actual.contains("1.5k"));
     }
+
+    #[test]
+    fn test_render_prompt_right_with_effort() {
+        // When effort is set, its short name appears in the prompt.
+        let mut prompt = ForgePrompt::default();
+        let _ = prompt.model(ModelId::new("gpt-4"));
+        let _ = prompt.effort(Effort::High);
+
+        let actual = prompt.render_prompt_right();
+        assert!(actual.contains("H"));
+    }
+
+    #[test]
+    fn test_render_prompt_right_hides_effort_none() {
+        // `Effort::None` carries no useful info — it must not be rendered.
+        let mut prompt = ForgePrompt::default();
+        let _ = prompt.model(ModelId::new("gpt-4"));
+        let _ = prompt.effort(Effort::None);
+
+        let actual = prompt.render_prompt_right();
+        assert!(!actual.to_uppercase().contains("NONE"));
+    }
 }

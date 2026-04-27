@@ -184,6 +184,9 @@ pub enum TopLevelCommand {
     /// Clipboard operations for shell integration.
     #[command(subcommand)]
     Clipboard(ClipboardCommandGroup),
+
+    /// Stream forge log output (defaults to the most recent log file).
+    Logs(LogsArgs),
 }
 
 /// Shell type for setup and doctor commands.
@@ -981,6 +984,27 @@ pub struct UpdateArgs {
     /// Skip the confirmation prompt when applying updates.
     #[arg(long, default_value_t = false)]
     pub no_confirm: bool,
+}
+
+/// Arguments for the `forge logs` command.
+#[derive(Parser, Debug, Clone)]
+pub struct LogsArgs {
+    /// Number of lines to show from the end of the log file.
+    #[arg(long, short = 'n', default_value_t = 20)]
+    pub lines: usize,
+
+    /// Do not follow the log output; exit after printing the last lines.
+    #[arg(long)]
+    pub no_follow: bool,
+
+    /// List all available log files instead of tailing one.
+    #[arg(long, short = 'l')]
+    pub list: bool,
+
+    /// Path to a specific log file to tail. Defaults to the most recent log
+    /// file in the forge logs directory.
+    #[arg(long, short = 'f')]
+    pub file: Option<PathBuf>,
 }
 
 #[cfg(test)]
