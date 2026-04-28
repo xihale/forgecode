@@ -201,10 +201,10 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         (model, context_length.or(self.cached_context_length))
     }
 
-    /// Displays banner only if user is in interactive mode.
+    /// Displays banner only if user is in interactive mode and show_banner is enabled.
     fn display_banner(&self) -> Result<()> {
-        if self.cli.is_interactive() {
-            banner::display(false)?;
+        if self.cli.is_interactive() && self.config.show_banner {
+            banner::display(false, self.config.show_tips)?;
         }
         Ok(())
     }
@@ -396,10 +396,12 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         self.init_state(true).await?;
 
         // Print hook summary after the banner.
-        if let Some(summary) = self.api.hook_summary() {
-            let text = summary.to_string();
-            if !text.is_empty() {
-                eprint!("{text}");
+        if self.config.show_hook_summary {
+            if let Some(summary) = self.api.hook_summary() {
+                let text = summary.to_string();
+                if !text.is_empty() {
+                    eprint!("{text}");
+                }
             }
         }
 
@@ -704,7 +706,9 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 return Ok(());
             }
             TopLevelCommand::Banner => {
-                banner::display(true)?;
+                if self.config.show_banner {
+                    banner::display(true, self.config.show_tips)?;
+                }
                 return Ok(());
             }
             TopLevelCommand::Config(config_group) => {

@@ -320,6 +320,29 @@ pub struct ForgeConfig {
     #[serde(default)]
     pub sudo: bool,
 
+    /// Whether to show the ASCII art banner at startup.
+    ///
+    /// When set to `false`, the entire ASCII art banner is hidden.
+    /// Defaults to `true`.
+    #[serde(default)]
+    pub show_banner: bool,
+
+    /// Whether to show tips and hints in the startup banner.
+    ///
+    /// When set to `false`, the version tips, command hints, and the
+    /// zsh plugin encouragement message are hidden from the banner.
+    /// Defaults to `true`.
+    #[serde(default)]
+    pub show_tips: bool,
+
+    /// Whether to show the hook summary in the startup banner.
+    ///
+    /// When set to `false`, the hook summary (e.g. MCP server failures)
+    /// is hidden from the banner.
+    /// Defaults to `true`.
+    #[serde(default)]
+    pub show_hook_summary: bool,
+
 }
 
 impl ForgeConfig {

@@ -307,6 +307,21 @@
         }
       ]
     },
+    "show_banner": {
+      "description": "Whether to show the ASCII art banner at startup.\n\nWhen set to `false`, the entire ASCII art banner is hidden.\nDefaults to `true`.",
+      "type": "boolean",
+      "default": false
+    },
+    "show_hook_summary": {
+      "description": "Whether to show the hook summary in the startup banner.\n\nWhen set to `false`, the hook summary (e.g. MCP server failures)\nis hidden from the banner.\nDefaults to `true`.",
+      "type": "boolean",
+      "default": false
+    },
+    "show_tips": {
+      "description": "Whether to show tips and hints in the startup banner.\n\nWhen set to `false`, the version tips, command hints, and the\nzsh plugin encouragement message are hidden from the banner.\nDefaults to `true`.",
+      "type": "boolean",
+      "default": false
+    },
     "subagents": {
       "description": "Enables subagent support via the task tool; when true the forge agent\ngains access to the `task` tool for delegating work to specialised\nsub-agents, and the `sage` research-only agent tool is removed.\nWhen false the `task` tool is disabled and `sage` is available instead.",
       "type": "boolean",
