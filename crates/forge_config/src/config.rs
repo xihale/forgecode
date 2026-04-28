@@ -324,7 +324,7 @@ pub struct ForgeConfig {
     ///
     /// When set to `false`, the entire ASCII art banner is hidden.
     /// Defaults to `true`.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub show_banner: bool,
 
     /// Whether to show tips and hints in the startup banner.
@@ -332,7 +332,7 @@ pub struct ForgeConfig {
     /// When set to `false`, the version tips, command hints, and the
     /// zsh plugin encouragement message are hidden from the banner.
     /// Defaults to `true`.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub show_tips: bool,
 
     /// Whether to show the hook summary in the startup banner.
@@ -340,9 +340,14 @@ pub struct ForgeConfig {
     /// When set to `false`, the hook summary (e.g. MCP server failures)
     /// is hidden from the banner.
     /// Defaults to `true`.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub show_hook_summary: bool,
 
+}
+
+/// Returns the default value for opt-out boolean configuration fields.
+fn default_true() -> bool {
+    true
 }
 
 impl ForgeConfig {
@@ -423,5 +428,42 @@ mod tests {
         let actual = ConfigReader::default().read_toml(&toml).build().unwrap();
 
         assert_eq!(actual.temperature, fixture.temperature);
+    }
+
+    #[test]
+    fn test_default_banner_settings_are_enabled() {
+        let actual = ConfigReader::default().read_toml("").build().unwrap();
+
+        assert!(actual.show_banner);
+        assert!(actual.show_tips);
+        assert!(actual.show_hook_summary);
+    }
+
+    #[test]
+    fn test_false_booleans_survive_serialization_round_trip() {
+        let fixture = "show_banner = false\nshow_tips = false\nshow_hook_summary = false\n";
+
+        let actual = ConfigReader::default()
+            .read_defaults()
+            .read_toml(fixture)
+            .build()
+            .unwrap();
+
+        let serialized = toml_edit::ser::to_string_pretty(&actual).unwrap();
+        let expected = ConfigReader::default()
+            .read_defaults()
+            .read_toml(&serialized)
+            .build()
+            .unwrap();
+
+        assert_eq!(actual.show_banner, false);
+        assert_eq!(actual.show_tips, false);
+        assert_eq!(actual.show_hook_summary, false);
+        assert_eq!(expected.show_banner, false);
+        assert_eq!(expected.show_tips, false);
+        assert_eq!(expected.show_hook_summary, false);
+        assert!(serialized.contains("show_banner = false"));
+        assert!(serialized.contains("show_tips = false"));
+        assert!(serialized.contains("show_hook_summary = false"));
     }
 }
