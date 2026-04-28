@@ -152,6 +152,19 @@ impl EditMode for ForgeEditMode {
             return ReedlineEvent::Edit(vec![EditCommand::InsertString(wrapped)]);
         }
 
+        if let Event::Key(key) = &raw {
+            // Ctrl+V: paste image from clipboard as @[path] attachment
+            if key.code == KeyCode::Char('v')
+                && key.modifiers.contains(KeyModifiers::CONTROL)
+            {
+                if let Ok(path) = crate::clipboard::paste_image_from_clipboard() {
+                    let attachment = format!("@[{}] ", path.display());
+                    return ReedlineEvent::Edit(vec![EditCommand::InsertString(attachment)]);
+                }
+                return ReedlineEvent::None;
+            }
+        }
+
         // For every other event, delegate to the inner Emacs mode.
         // We need to reconstruct a ReedlineRawEvent from the crossterm Event.
         // ReedlineRawEvent implements TryFrom<Event>.

@@ -150,8 +150,20 @@ pub enum TopLevelCommand {
     /// Run diagnostics on shell environment (alias for `zsh doctor`).
     Doctor,
 
+    /// Clipboard operations for shell integration.
+    #[command(subcommand)]
+    Clipboard(ClipboardCommandGroup),
+
     /// Stream forge log output (defaults to the most recent log file).
     Logs(LogsArgs),
+}
+
+/// Clipboard operations for shell integration.
+#[derive(Subcommand, Debug, Clone)]
+pub enum ClipboardCommandGroup {
+    /// Paste image from system clipboard as a temporary file path
+    #[command(name = "paste-image")]
+    PasteImage,
 }
 
 /// Command group for custom command management.

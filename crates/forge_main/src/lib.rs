@@ -1,4 +1,5 @@
 pub mod banner;
+mod clipboard;
 mod cli;
 mod completer;
 mod conversation_selector;

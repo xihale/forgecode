@@ -737,6 +737,14 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 self.on_zsh_doctor().await?;
                 return Ok(());
             }
+            TopLevelCommand::Clipboard(clipboard_group) => {
+                match clipboard_group {
+                    crate::cli::ClipboardCommandGroup::PasteImage => {
+                        self.on_clipboard_paste_image()?;
+                    }
+                }
+                return Ok(());
+            }
             TopLevelCommand::Logs(args) => {
                 let log_dir = self.api.environment().log_path();
                 crate::logs::run(args, log_dir).await?;
@@ -1767,6 +1775,13 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             }
         }
 
+        Ok(())
+    }
+
+    /// Paste image from clipboard to a temporary file
+    fn on_clipboard_paste_image(&self) -> anyhow::Result<()> {
+        let path = crate::clipboard::paste_image_from_clipboard()?;
+        println!("{}", path.display());
         Ok(())
     }
 
