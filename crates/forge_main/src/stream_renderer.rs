@@ -22,7 +22,7 @@ impl<P: ConsoleWriter> Clone for SharedSpinner<P> {
     }
 }
 
-impl<P: ConsoleWriter> SharedSpinner<P> {
+impl<P: ConsoleWriter + 'static> SharedSpinner<P> {
     /// Creates a new shared spinner from a SpinnerManager.
     pub fn new(spinner: SpinnerManager<P>) -> Self {
         Self(Arc::new(Mutex::new(spinner)))
@@ -100,7 +100,7 @@ fn term_width() -> usize {
 /// Coordinates between markdown rendering and spinner visibility:
 /// - Stops spinner when content is being written
 /// - Restarts spinner when idle
-pub struct StreamingWriter<P: ConsoleWriter> {
+pub struct StreamingWriter<P: ConsoleWriter + 'static> {
     active: Option<ActiveRenderer<P>>,
     spinner: SharedSpinner<P>,
     printer: Arc<P>,
@@ -160,12 +160,12 @@ impl<P: ConsoleWriter + 'static> StreamingWriter<P> {
 }
 
 /// Active renderer with its style.
-struct ActiveRenderer<P: ConsoleWriter> {
+struct ActiveRenderer<P: ConsoleWriter + 'static> {
     renderer: StreamdownRenderer<StreamDirectWriter<P>>,
     style: Style,
 }
 
-impl<P: ConsoleWriter> ActiveRenderer<P> {
+impl<P: ConsoleWriter + 'static> ActiveRenderer<P> {
     pub fn push(&mut self, text: &str) -> Result<()> {
         self.renderer.push(text)?;
         Ok(())
@@ -184,7 +184,7 @@ struct StreamDirectWriter<P: ConsoleWriter> {
     style: Style,
 }
 
-impl<P: ConsoleWriter> StreamDirectWriter<P> {
+impl<P: ConsoleWriter + 'static> StreamDirectWriter<P> {
     fn pause_spinner(&self) {
         let _ = self.spinner.stop(None);
     }
@@ -201,7 +201,7 @@ impl<P: ConsoleWriter> Drop for StreamDirectWriter<P> {
     }
 }
 
-impl<P: ConsoleWriter> io::Write for StreamDirectWriter<P> {
+impl<P: ConsoleWriter + 'static> io::Write for StreamDirectWriter<P> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.pause_spinner();
 
