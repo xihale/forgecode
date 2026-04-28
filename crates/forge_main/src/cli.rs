@@ -680,12 +680,14 @@ pub enum ConfigSetField {
     ShellBehaviorQuiet {
         /// When true, hide reasoning, initialization, and finished markers for
         /// shell-triggered prompts.
+        #[arg(action = clap::ArgAction::Set)]
         enabled: bool,
     },
     /// Set whether shell-triggered prompts should auto-start background sync.
     ShellBehaviorSync {
         /// When true, shell-triggered prompts auto-start background workspace
         /// sync after the response completes.
+        #[arg(action = clap::ArgAction::Set)]
         enabled: bool,
     },
     /// Set the provider and model for commit message generation.
@@ -710,6 +712,7 @@ pub enum ConfigSetField {
     /// Enable or disable `sudo` mode for all shell commands.
     Sudo {
         /// When `true`, every shell command is automatically prefixed with `sudo`.
+        #[arg(action = clap::ArgAction::Set)]
         enabled: bool,
     },
 }

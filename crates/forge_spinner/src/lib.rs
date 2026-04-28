@@ -259,7 +259,7 @@ impl<P: ConsoleWriter + 'static> SpinnerManager<P> {
     pub fn elapsed(&self) -> Duration {
         self.spinner
             .as_ref()
-            .map_or(self.accumulated_elapsed, ProgressBar::elapsed)
+            .map_or(self.accumulated_elapsed, ActiveSpinner::elapsed)
     }
 
     /// Writes a line to stdout, suspending the spinner if active.

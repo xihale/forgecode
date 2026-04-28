@@ -134,27 +134,18 @@ impl Compactor {
             });
 
         // Accumulate usage from all messages in the compaction range before they are
-        // destroyed. Only preserve the cost field — token counts are zeroed because
-        // the summary message is synthetic (never sent to the API) and its
-        // accumulated token counts would be misleading (far exceeding the actual
-        // context size after compaction).
-        let compacted_cost = context.messages.get(start..=end).and_then(|slice| {
+        // destroyed
+        let compacted_usage = context.messages.get(start..=end).and_then(|slice| {
             slice
                 .iter()
                 .filter_map(|entry| entry.usage.as_ref())
-                .filter_map(|usage| usage.cost)
-                .reduce(|a, b| a + b)
+                .cloned()
+                .reduce(|a, b| a.accumulate(&b))
         });
 
-        // Replace the range with the summary, transferring only the cost
+        // Replace the range with the summary, transferring the accumulated usage
         let mut summary_entry = MessageEntry::from(ContextMessage::user(summary, None));
-        summary_entry.usage = compacted_cost.map(|cost| forge_domain::Usage {
-            total_tokens: forge_domain::TokenCount::Actual(0),
-            prompt_tokens: forge_domain::TokenCount::Actual(0),
-            completion_tokens: forge_domain::TokenCount::Actual(0),
-            cached_tokens: forge_domain::TokenCount::Actual(0),
-            cost: Some(cost),
-        });
+        summary_entry.usage = compacted_usage;
         context
             .messages
             .splice(start..=end, std::iter::once(summary_entry));
@@ -577,7 +568,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compaction_preserves_cost_but_zeros_token_counts() {
+    fn test_compaction_preserves_usage_information() {
         use forge_domain::{TokenCount, Usage};
 
         let environment = test_environment();
@@ -640,36 +631,36 @@ mod tests {
             "Expected 3 messages after compaction: summary + 2 remaining messages"
         );
 
-        // The summary entry at index 0 should carry only the cost from the
-        // compacted range (0.5 + 1.0 = 1.5), with all token counts zeroed.
-        let expected_summary_usage = Usage {
-            total_tokens: TokenCount::Actual(0),
-            prompt_tokens: TokenCount::Actual(0),
-            completion_tokens: TokenCount::Actual(0),
+        // The summary entry at index 0 should carry the accumulated usage from
+        // indices 1 and 3 (inside_usage + inside_usage2)
+        let expected_compacted_usage = Usage {
+            total_tokens: TokenCount::Actual(50000),
+            prompt_tokens: TokenCount::Actual(45000),
+            completion_tokens: TokenCount::Actual(5000),
             cached_tokens: TokenCount::Actual(0),
             cost: Some(1.5),
         };
 
         assert_eq!(
             compacted.messages[0].usage,
-            Some(expected_summary_usage),
-            "Summary message should carry only cost with zeroed token counts"
+            Some(expected_compacted_usage),
+            "Summary message should carry accumulated usage from compacted messages"
         );
 
-        // accumulate_usage() sums the summary (cost only) and the surviving
-        // outside_usage. Token counts come only from the surviving message.
+        // accumulate_usage() must sum both the compacted range usage (on the summary
+        // message) and the surviving outside_usage — total = inside + inside2 + outside
         let expected_total_usage = Usage {
-            total_tokens: TokenCount::Actual(50000),
-            prompt_tokens: TokenCount::Actual(45000),
-            completion_tokens: TokenCount::Actual(5000),
+            total_tokens: TokenCount::Actual(100000),
+            prompt_tokens: TokenCount::Actual(90000),
+            completion_tokens: TokenCount::Actual(10000),
             cached_tokens: TokenCount::Actual(0),
-            cost: Some(3.0), // 1.5 (summary) + 1.5 (outside)
+            cost: Some(3.0),
         };
 
         assert_eq!(
             compacted.accumulate_usage(),
             Some(expected_total_usage),
-            "accumulate_usage() must include cost from compacted range and full usage from surviving messages"
+            "accumulate_usage() must include usage from both compacted and surviving messages"
         );
     }
 
