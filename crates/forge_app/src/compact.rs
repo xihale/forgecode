@@ -664,6 +664,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_compaction_metrics_should_not_use_latest_provider_usage() {
+        use forge_domain::{TokenCount, Usage};
+
+        let mut entry = MessageEntry::from(ContextMessage::assistant(
+            create_large_content(400),
+            None,
+            None,
+            None,
+        ));
+        entry.usage = Some(Usage {
+            total_tokens: TokenCount::Actual(10),
+            ..Default::default()
+        });
+
+        let fixture = Context::default()
+            .add_entry(ContextMessage::user(create_large_content(400), None))
+            .add_entry(ContextMessage::user(create_large_content(400), None))
+            .add_entry(entry);
+
+        let actual = fixture.token_count_approx() > *fixture.token_count();
+        let expected = true;
+
+        assert_eq!(
+            actual, expected,
+            "The latest provider usage can be lower than the retained context size"
+        );
+    }
+
     /// Creates a Context from a condensed string pattern where:
     /// - 'u' = User message
     /// - 'a' = Assistant message
