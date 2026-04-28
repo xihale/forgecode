@@ -138,8 +138,40 @@ impl<F: HttpInfra + EnvironmentInfra<Config = forge_config::ForgeConfig> + Sync>
     }
 }
 
+/// Returns the known context length for well-known model IDs.
+/// Only used when the remote API does not provide a context length.
+fn known_context_length(model_id: &str) -> Option<u64> {
+    match model_id {
+        // GPT-5.5 family
+        id if id.starts_with("gpt-5.5") => Some(1_050_000),
+        // GPT-5.4 family
+        id if id.starts_with("gpt-5.4-mini") || id.starts_with("gpt-5.4-nano") => Some(400_000),
+        id if id.starts_with("gpt-5.4") => Some(1_000_000),
+        // GPT-5.3 codex family
+        id if id.starts_with("gpt-5.3-codex-spark") => Some(128_000),
+        id if id.starts_with("gpt-5.3-codex") => Some(272_000),
+        // GPT-5.2 codex family
+        id if id.starts_with("gpt-5.2-codex") => Some(272_000),
+        // GPT-5.x general
+        id if id.starts_with("gpt-5.1-codex-mini") => Some(200_000),
+        id if id.starts_with("gpt-5") => Some(200_000),
+        // Claude models
+        id if id.starts_with("claude-opus-4-6") || id.starts_with("claude-opus-4-7") => Some(1_000_000),
+        id if id.starts_with("claude-sonnet-4-6") => Some(1_000_000),
+        id if id.starts_with("claude-") => Some(200_000),
+        // Gemini models
+        id if id.starts_with("gemini-") => Some(1_000_000),
+        _ => None,
+    }
+}
+
 fn enrich_remote_model(mut model: Model) -> Model {
     let model_id = model.id.as_str().to_ascii_lowercase();
+
+    // Fill in context_length if the remote API didn't provide one
+    if model.context_length.is_none() {
+        model.context_length = known_context_length(&model_id);
+    }
 
     model.tools_supported = Some(model.tools_supported.unwrap_or(true));
     model.supports_reasoning = Some(model.supports_reasoning.unwrap_or(true));
@@ -392,11 +424,13 @@ mod tests {
         let actual = repository.models(provider).await.unwrap();
         let expected = vec![
             fixture_model("claude-opus-4-7")
+                .context_length(Some(1_000_000))
                 .tools_supported(Some(true))
                 .supports_parallel_tool_calls(Some(true))
                 .supports_reasoning(Some(true))
                 .input_modalities(vec![InputModality::Text, InputModality::Image]),
             fixture_model("claude-haiku-4-5")
+                .context_length(Some(200_000))
                 .tools_supported(Some(true))
                 .supports_parallel_tool_calls(Some(false))
                 .supports_reasoning(Some(true))

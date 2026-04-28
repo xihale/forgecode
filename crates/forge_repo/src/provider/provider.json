@@ -818,6 +818,12 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
+        "supported_reasoning_efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
         "input_modalities": ["text", "image"]
       },
       {
@@ -828,6 +834,12 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
+        "supported_reasoning_efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
         "input_modalities": ["text", "image"]
       }
     ],
