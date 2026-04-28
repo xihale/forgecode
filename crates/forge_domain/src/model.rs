@@ -44,10 +44,21 @@ pub struct Model {
 impl Model {
     /// Returns the supported reasoning effort levels for this model.
     ///
-    /// This method prioritizes the explicitly defined `supported_reasoning_efforts`
-    /// field. If that field is missing or empty, it uses the model's identity
-    /// to determine a sensible set of levels if the model supports reasoning.
+    /// `Effort::None` (no thinking) is always prepended so users can opt out
+    /// of reasoning regardless of the model. The remaining levels come from
+    /// the explicitly defined `supported_reasoning_efforts` field when
+    /// present, otherwise from family-based heuristics.
     pub fn reasoning_efforts(&self) -> Vec<Effort> {
+        let mut efforts = self.model_efforts();
+        efforts.insert(0, Effort::None);
+        efforts
+    }
+
+    /// Returns model-specific effort levels **without** the `None` opt-out.
+    ///
+    /// This is the internal helper that [`reasoning_efforts`] wraps; it keeps
+    /// the "prepend None" concern in a single place.
+    fn model_efforts(&self) -> Vec<Effort> {
         // 1. Prioritize explicit definition from the provider/config
         if let Some(ref efforts) = self.supported_reasoning_efforts
             && !efforts.is_empty()
