@@ -514,6 +514,41 @@ fn get_codex_models() -> Vec<Model> {
             input_modalities: vec![InputModality::Text, InputModality::Image],
         },
         Model {
+            id: ModelId::new("gpt-5.5"),
+            name: Some("GPT-5.5".to_string()),
+            description: Some("Frontier model for the most complex professional work.".to_string()),
+            context_length: Some(1_050_000),
+            tools_supported: Some(true),
+            supports_parallel_tool_calls: Some(true),
+            supports_reasoning: Some(true),
+            supported_reasoning_efforts: Some(vec![
+                Effort::Low,
+                Effort::Medium,
+                Effort::High,
+                Effort::XHigh,
+            ]),
+            input_modalities: vec![InputModality::Text, InputModality::Image],
+        },
+        Model {
+            id: ModelId::new("gpt-5.5-pro"),
+            name: Some("GPT-5.5 Pro".to_string()),
+            description: Some(
+                "GPT-5.5 pro uses more compute to think harder and provide consistently better answers."
+                    .to_string(),
+            ),
+            context_length: Some(1_050_000),
+            tools_supported: Some(true),
+            supports_parallel_tool_calls: Some(true),
+            supports_reasoning: Some(true),
+            supported_reasoning_efforts: Some(vec![
+                Effort::Low,
+                Effort::Medium,
+                Effort::High,
+                Effort::XHigh,
+            ]),
+            input_modalities: vec![InputModality::Text, InputModality::Image],
+        },
+        Model {
             id: ModelId::new("gpt-5.4"),
             name: Some("GPT-5.4".to_string()),
             description: Some("Latest frontier model for complex professional work".to_string()),
