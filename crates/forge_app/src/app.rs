@@ -241,9 +241,12 @@ impl<S: Services + EnvironmentInfra<Config = forge_config::ForgeConfig>> ForgeAp
             }
         };
 
-        // Calculate original metrics
+        // Calculate original metrics using the serialized context shape. The
+        // latest provider usage can be lower than the full retained context,
+        // which makes a manual compaction appear to grow from "last request
+        // tokens" to "current context tokens".
         let original_messages = context.messages.len();
-        let original_token_count = *context.token_count();
+        let original_token_count = context.token_count_approx();
 
         let forge_config = self.services.get_config()?;
 
@@ -270,7 +273,7 @@ impl<S: Services + EnvironmentInfra<Config = forge_config::ForgeConfig>> ForgeAp
         let compacted_context = Compactor::new(compact, environment).compact(context, true)?;
 
         let compacted_messages = compacted_context.messages.len();
-        let compacted_tokens = *compacted_context.token_count();
+        let compacted_tokens = compacted_context.token_count_approx();
 
         // Update the conversation with the compacted context
         conversation.context = Some(compacted_context);
