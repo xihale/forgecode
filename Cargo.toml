@@ -161,8 +161,12 @@ forge_walker = { path = "crates/forge_walker" }
 forge_json_repair = { path = "crates/forge_json_repair" }
 forge_select = { path = "crates/forge_select" }
 forge_test_kit = { path = "crates/forge_test_kit" }
-
 forge_markdown_stream = { path = "crates/forge_markdown_stream" }
 forge_config = { path = "crates/forge_config" }
 forge_eventsource = { path = "crates/forge_eventsource" }
 forge_eventsource_stream = { path = "crates/forge_eventsource_stream" }
+
+# Patch html2md to remove Android JNI dependency (jni 0.19.0 build.rs doesn't support Android target).
+# The JNI bindings are not needed by forgecode - they're only for Java interop on Android.
+[patch.crates-io]
+html2md = { path = "vendor/html2md" }
