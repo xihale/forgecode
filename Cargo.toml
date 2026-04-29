@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/*"]
+default-members = ["crates/forge_main"]
 resolver = "2"
 
 
