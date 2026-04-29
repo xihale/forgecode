@@ -2,11 +2,11 @@
 # !! Do not edit manually - changes will be overwritten !!
 
 # Load forge shell plugin (commands, completions, keybindings) if not already loaded
-if command -q forge; and test -z "$_FORGE_PLUGIN_LOADED"
+if test -z "$_FORGE_PLUGIN_LOADED"
     forge fish plugin | source
 end
 
 # Load forge shell theme (prompt with AI context) if not already loaded
-if command -q forge; and test -z "$_FORGE_THEME_LOADED"
+if test -z "$_FORGE_THEME_LOADED"
     forge fish theme | source
 end
