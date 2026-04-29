@@ -1,3 +1,13 @@
+[package]
+name = "forge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "forge"
+path = "crates/forge_main/src/main.rs"
+
 [workspace]
 members = ["crates/*"]
 default-members = ["crates/forge_main"]
