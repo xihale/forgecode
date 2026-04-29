@@ -613,19 +613,23 @@ impl Context {
             .add_tool_results(tool_results)
     }
 
-    /// Returns the token count for context
+    /// Returns the token count for context.
+    ///
+    /// Prefers the most recent non-zero usage reported by the provider. If the
+    /// newest messages do not carry usage metadata, this walks backward to find
+    /// the latest usable total instead of falling back immediately to an
+    /// approximation.
     pub fn token_count(&self) -> TokenCount {
-        let actual = self
+        let latest_usage = self
             .messages
-            .last()
-            .as_ref()
-            .and_then(|u| u.usage)
-            .map(|u| u.total_tokens)
-            .unwrap_or_default();
+            .iter()
+            .rev()
+            .filter_map(|message| message.usage.map(|usage| usage.total_tokens))
+            .find(|token_count| **token_count > 0);
 
-        match actual {
-            TokenCount::Actual(actual) if actual > 0 => TokenCount::Actual(actual),
-            _ => TokenCount::Approx(self.token_count_approx()),
+        match latest_usage {
+            Some(token_count) => token_count,
+            None => TokenCount::Approx(self.token_count_approx()),
         }
     }
 
@@ -1082,34 +1086,68 @@ mod tests {
 
     #[test]
     fn test_context_token_count_uses_last_message_usage() {
-        // Setup: Create multiple messages with different usage values
-        let first_usage = Usage { total_tokens: TokenCount::Actual(100), ..Default::default() };
-        let mut first_message = MessageEntry::from(ContextMessage::user("First message", None));
-        first_message.usage = Some(first_usage);
+        let setup_first_usage =
+            Usage { total_tokens: TokenCount::Actual(100), ..Default::default() };
+        let mut setup_first_message =
+            MessageEntry::from(ContextMessage::user("First message", None));
+        setup_first_message.usage = Some(setup_first_usage);
 
-        let second_usage = Usage { total_tokens: TokenCount::Actual(200), ..Default::default() };
-        let mut second_message = MessageEntry::from(ContextMessage::assistant(
+        let setup_second_usage =
+            Usage { total_tokens: TokenCount::Actual(200), ..Default::default() };
+        let mut setup_second_message = MessageEntry::from(ContextMessage::assistant(
             "Second message",
             None,
             None,
             None,
         ));
-        second_message.usage = Some(second_usage);
+        setup_second_message.usage = Some(setup_second_usage);
 
-        let third_usage = Usage { total_tokens: TokenCount::Actual(300), ..Default::default() };
-        let mut third_message = MessageEntry::from(ContextMessage::user("Third message", None));
-        third_message.usage = Some(third_usage);
+        let setup_third_usage =
+            Usage { total_tokens: TokenCount::Actual(300), ..Default::default() };
+        let mut setup_third_message =
+            MessageEntry::from(ContextMessage::user("Third message", None));
+        setup_third_message.usage = Some(setup_third_usage);
 
-        // Execute: Create context with all three messages
-        let fixture =
-            Context::default().messages(vec![first_message, second_message, third_message]);
-
-        let actual = fixture.token_count();
-
-        // Expected: Should use the LAST message's usage (300), not the first (100) or
-        // second (200)
+        let setup = Context::default().messages(vec![
+            setup_first_message,
+            setup_second_message,
+            setup_third_message,
+        ]);
+        let actual = setup.token_count();
         let expected = TokenCount::Actual(300);
+        assert_eq!(actual, expected);
+    }
 
+    #[test]
+    fn test_context_token_count_uses_latest_non_zero_usage() {
+        let setup_first_usage =
+            Usage { total_tokens: TokenCount::Actual(100), ..Default::default() };
+        let mut setup_first_message =
+            MessageEntry::from(ContextMessage::user("First message", None));
+        setup_first_message.usage = Some(setup_first_usage);
+
+        let setup_second_usage =
+            Usage { total_tokens: TokenCount::Actual(200), ..Default::default() };
+        let mut setup_second_message = MessageEntry::from(ContextMessage::assistant(
+            "Second message",
+            None,
+            None,
+            None,
+        ));
+        setup_second_message.usage = Some(setup_second_usage);
+
+        let setup_third_usage = Usage::default();
+        let mut setup_third_message =
+            MessageEntry::from(ContextMessage::user("Third message", None));
+        setup_third_message.usage = Some(setup_third_usage);
+
+        let setup = Context::default().messages(vec![
+            setup_first_message,
+            setup_second_message,
+            setup_third_message,
+        ]);
+        let actual = setup.token_count();
+        let expected = TokenCount::Actual(200);
         assert_eq!(actual, expected);
     }
 
