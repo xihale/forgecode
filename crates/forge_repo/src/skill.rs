@@ -58,6 +58,10 @@ impl<I> ForgeSkillRepository<I> {
                 "forge://skills/github-pr-description/SKILL.md",
                 include_str!("skills/github-pr-description/SKILL.md"),
             ),
+            (
+                "forge://skills/sem-search/SKILL.md",
+                include_str!("skills/sem-search/SKILL.md"),
+            ),
         ];
 
         builtin_skills
@@ -408,7 +412,7 @@ mod tests {
         let actual = repo.load_builtin_skills();
 
         // Assert
-        assert_eq!(actual.len(), 3);
+        assert_eq!(actual.len(), 4);
 
         // Check create-skill
         let create_skill = actual.iter().find(|s| s.name == "create-skill").unwrap();
@@ -449,6 +453,18 @@ mod tests {
         );
         assert!(!pr_description.description.is_empty());
         assert!(pr_description.command.contains("Create PR Description"));
+
+        // Check sem-search
+        let sem_search = actual
+            .iter()
+            .find(|s| s.name == "sem-search")
+            .unwrap();
+        assert_eq!(
+            sem_search.path,
+            Some(std::path::Path::new("forge://skills/sem-search/SKILL.md").to_path_buf())
+        );
+        assert!(sem_search.description.contains("sem_search"));
+        assert!(sem_search.command.contains("Semantic Search"));
     }
 
     #[tokio::test]

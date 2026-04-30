@@ -17,10 +17,6 @@ use strum_macros::{AsRefStr, Display, EnumDiscriminants, EnumIter};
 use crate::{ToolCallArguments, ToolCallFull, ToolDefinition, ToolDescription, ToolName};
 
 /// Enum representing all possible tool input types.
-///
-/// This enum contains variants for each type of input that can be passed to
-/// tools in the application. Each variant corresponds to the input type for a
-/// specific tool.
 #[derive(
     Debug,
     Clone,
@@ -60,15 +56,10 @@ pub enum ToolCatalog {
     Task(TaskInput),
 }
 
-/// Input structure for agent tool calls. This serves as the generic schema
-/// for dynamically registered agent tools, allowing users to specify tasks
-/// for specific agents.
+/// Generic schema for dynamically registered agent tools.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct AgentInput {
-    /// A list of clear and detailed descriptions of the tasks to be performed
-    /// by the agent in parallel. Provide sufficient context and specific
-    /// requirements to enable the agent to understand and execute the work
-    /// accurately.
+    /// Task descriptions for the agent.
     pub tasks: Vec<String>,
 }
 
@@ -76,20 +67,13 @@ pub struct AgentInput {
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/task.md"]
 pub struct TaskInput {
-    /// A list of clear and detailed descriptions of the tasks to be performed
-    /// by the agent in parallel. Provide sufficient context and specific
-    /// requirements to enable the agent to understand and execute the work
-    /// accurately.
+    /// Task descriptions for parallel execution by the agent.
     pub tasks: Vec<String>,
 
-    /// The ID of the specialized agent to delegate to (e.g., "forge", "muse",
-    /// "sage")
+    /// Agent ID (e.g. "forge", "muse", "sage").
     pub agent_id: String,
 
-    /// Optional session ID to continue an existing agent session. If not
-    /// provided, a new stateless session will be created. Use this to
-    /// maintain context across multiple task invocations with the same
-    /// agent.
+    /// Optional session ID for continuing existing sessions.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
 }
@@ -192,11 +176,11 @@ impl Todo {
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[schemars(deny_unknown_fields)]
 pub struct FSReadRange {
-    /// 1-based first line.
+    /// 1-based first line (inclusive).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_line: Option<i32>,
 
-    /// Inclusive 1-based last line.
+    /// 1-based last line (inclusive).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_line: Option<i32>,
 }
@@ -205,7 +189,7 @@ pub struct FSReadRange {
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/fs_read.md"]
 #[schemars(deny_unknown_fields)]
 pub struct FSRead {
-    /// Absolute path to the file to read.
+    /// Absolute path to file to read.
     #[serde(alias = "path")]
     pub file_path: String,
 
@@ -213,8 +197,7 @@ pub struct FSRead {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub range: Option<FSReadRange>,
 
-    /// If true, prefixes each line with its line index (starting at 1).
-    /// Defaults to true.
+    /// Show line numbers. Defaults to true.
     #[serde(default = "default_true")]
     pub show_line_numbers: bool,
 }
@@ -222,16 +205,14 @@ pub struct FSRead {
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/fs_write.md"]
 pub struct FSWrite {
-    /// The absolute path to the file to write (must be absolute, not relative)
+    /// Absolute path to file.
     #[serde(alias = "path")]
     pub file_path: String,
 
-    /// The content to write to the file
+    /// Content to write.
     pub content: String,
 
-    /// If set to true, existing files will be overwritten. If not set and the
-    /// file exists, an error will be returned with the content of the
-    /// existing file.
+    /// Overwrite existing files. Error if false and file exists.
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
     pub overwrite: bool,
@@ -241,68 +222,54 @@ pub struct FSWrite {
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/fs_search.md"]
 #[derive(Default)]
 pub struct FSSearch {
-    /// The regular expression pattern to search for in file contents.
+    /// Regex pattern to search for.
     pub pattern: String,
 
-    /// File or directory to search in (rg PATH). Defaults to current working
-    /// directory.
+    /// File or directory to search in. Defaults to cwd.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 
-    /// Glob pattern to filter files (e.g. "*.js", "*.{ts,tsx}") - maps to rg
-    /// --glob
+    /// Glob filter (e.g. "*.js", "*.{ts,tsx}").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub glob: Option<String>,
 
-    /// Output mode: "content" shows matching lines (supports -A/-B/-C context,
-    /// -n line numbers, head_limit), "files_with_matches" shows file paths
-    /// (supports head_limit), "count" shows match counts (supports head_limit).
-    /// Defaults to "files_with_matches".
+    /// Output mode: "content" (lines), "files_with_matches" (paths), "count".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_mode: Option<OutputMode>,
 
-    /// Number of lines to show before each match (rg -B). Requires output_mode:
-    /// "content", ignored otherwise.
+    /// Lines before match (rg -B). Requires output_mode: "content".
     #[serde(rename = "-B", skip_serializing_if = "Option::is_none")]
     pub before_context: Option<u32>,
 
-    /// Number of lines to show after each match (rg -A). Requires output_mode:
-    /// "content", ignored otherwise.
+    /// Lines after match (rg -A). Requires output_mode: "content".
     #[serde(rename = "-A", skip_serializing_if = "Option::is_none")]
     pub after_context: Option<u32>,
 
-    /// Number of lines to show before and after each match (rg -C). Requires
-    /// output_mode: "content", ignored otherwise.
+    /// Lines before and after match (rg -C). Requires output_mode: "content".
     #[serde(rename = "-C", skip_serializing_if = "Option::is_none")]
     pub context: Option<u32>,
 
-    /// Show line numbers in output (rg -n). Requires output_mode: "content",
-    /// ignored otherwise.
+    /// Show line numbers (rg -n). Requires output_mode: "content".
     #[serde(rename = "-n", skip_serializing_if = "Option::is_none")]
     pub show_line_numbers: Option<bool>,
 
-    /// Case insensitive search (rg -i)
+    /// Case insensitive search (rg -i).
     #[serde(rename = "-i", skip_serializing_if = "Option::is_none")]
     pub case_insensitive: Option<bool>,
 
-    /// File type to search (rg --type). Common types: js, py, rust, go, java,
-    /// etc. More efficient than include for standard file types.
+    /// File type (rg --type). E.g. js, py, rust, go, java.
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub file_type: Option<String>,
 
-    /// Limit output to first N lines/entries, equivalent to "| head -N". Works
-    /// across all output modes: content (limits output lines),
-    /// files_with_matches (limits file paths), count (limits count entries).
-    /// When unspecified, shows all results from ripgrep.
+    /// Limit output to first N entries. Works across all output modes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub head_limit: Option<u32>,
 
-    /// Skip first N lines/entries before applying head_limit
+    /// Skip first N entries before applying head_limit.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub offset: Option<u32>,
 
-    /// Enable multiline mode where . matches newlines and patterns can span
-    /// lines (rg -U --multiline-dotall). Default: false.
+    /// Multiline mode: . matches newlines (rg -U --multiline-dotall).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub multiline: Option<bool>,
 }
@@ -319,112 +286,13 @@ pub enum OutputMode {
     Count,
 }
 
-/// A paired query and use_case for semantic search. Each query must have a
-/// corresponding use_case for document reranking.
+/// A paired query and use_case for semantic search.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct SearchQuery {
-    /// The semantic embedding query that describes WHAT the code does or its
-    /// purpose. This query is converted to a vector embedding and used to find
-    /// semantically similar code chunks in the vector database.
-    ///
-    /// **Guidelines for effective embedding queries:**
-    /// - Use specific, targeted technical terms and domain concepts
-    /// - Describe behavior, functionality, patterns, or implementation approach
-    /// - Include concrete keywords like technology names, algorithms, data
-    ///   structures
-    /// - Balance specificity (focused results) with generality (avoid missing
-    ///   relevant code)
-    /// - Keep queries focused - overly broad queries cause timeouts and poor
-    ///   results
-    /// - **Align keywords with intent**: For documentation, use "README",
-    ///   "guide", "setup"; for implementation, use "function", "logic",
-    ///   "handler"
-    ///
-    /// **Good examples:**
-    /// - "exponential backoff retry mechanism with configurable delays"
-    /// - "streaming LLM responses with SSE chunked transfer encoding"
-    /// - "OAuth2 token refresh with automatic retry and expiry check"
-    /// - "Diesel database migration runner with transaction support"
-    /// - "semantic search reranker using cross-encoder model"
-    /// - "README documentation configuration setup semantic search"
-    /// - "markdown guide API documentation tool definitions"
-    ///
-    /// **Bad examples:**
-    /// - "retry" (too generic, will match everything)
-    /// - "authentication" (overly broad - specify what aspect: login, tokens,
-    ///   middleware?)
-    /// - "tool definitions schemas" (too vague - be more specific about
-    ///   structure or location)
-    /// - "how system works" (meta-question, not searchable concept)
-    /// - "function that validates" (focus on what it validates, not that it's a
-    ///   function)
+    /// Embedding query: WHAT the code does. Use specific technical terms.
     pub query: String,
 
-    /// The reranking query that describes your INTENT and WHY you need this
-    /// code. This query is used by the reranker model to filter and
-    /// prioritize the most relevant results from the initial embedding
-    /// search based on your specific use case.
-    ///
-    /// **Purpose:** While `query` casts a wide net for similar code, `use_case`
-    /// narrows it down by intent: implementation vs docs vs tests, reading
-    /// vs modifying code, understanding architecture vs finding bugs, etc.
-    ///
-    /// **Guidelines for effective reranking queries:**
-    /// - **MANDATORY FOR CODE**: ALWAYS include codebase construct keywords
-    ///   (struct, trait, impl, interface, class, function, fn, definition,
-    ///   implementation, declaration, type) when searching for code
-    /// - **WHY CRITICAL**: The reranker gives HIGH WEIGHTAGE to these keywords
-    ///   - "struct" → prioritizes struct definitions
-    ///   - "trait impl" → prioritizes trait implementations
-    ///   - "function" / "fn" → prioritizes function definitions
-    ///   - Without these, you get documentation instead of code!
-    /// - Clearly state your goal: understand, modify, debug, find examples,
-    ///   etc.
-    /// - Specify the TYPE of code you need: implementation, tests, docs,
-    ///   config, architecture
-    /// - Include WHY context: "to fix a bug", "to add a feature", "to
-    ///   understand flow"
-    /// - Be explicit about what to AVOID: "not tests", "not documentation",
-    ///   "not examples"
-    /// - **Match intent to file types**: documentation intent → avoid
-    ///   requesting "implementation code"; implementation intent → avoid
-    ///   requesting "documentation"
-    /// - Keep it concise (1-2 sentences) but informative
-    /// - MUST be different from the embedding query - add intent/context
-    ///
-    /// **Good examples (ALWAYS include construct keywords):**
-    /// - "I need the struct definition and trait implementation for Diesel
-    ///   migrations to understand the transaction handling, not setup docs"
-    /// - "Show me the function implementation for semantic search reranker so I
-    ///   can modify it to support file type filtering"
-    /// - "Find the type declarations and interface definitions for the tool
-    ///   registry, not the usage examples"
-    /// - "I'm debugging a timeout issue and need the function implementation
-    ///   that handles streaming responses, not the API documentation"
-    /// - "Show me the struct definitions and trait implementations for
-    ///   authentication, not the setup guide"
-    /// - "I need the impl block for workspace sync to understand how it detects
-    ///   file changes"
-    /// - "Find the fn definitions for embedding generation batching logic"
-    /// - "I need documentation explaining how to configure semantic search, not
-    ///   the implementation code"
-    /// - "Find the README or setup guide that explains the tool registration
-    ///   process, avoiding implementation details"
-    ///
-    /// **Bad examples (missing construct keywords = FAILS):**
-    /// - "I need code that handles authentication" ❌ MISSING:
-    ///   struct/trait/impl/function
-    /// - "Show me the database logic" ❌ MISSING: trait/impl/function keywords
-    /// - "I need the workspace sync implementation" ❌ MISSING: struct/impl/fn
-    ///   - too generic
-    /// - "Find the reranker code" ❌ MISSING: struct/trait/impl/function
-    /// - "exponential backoff retry mechanism" ❌ MISSING: WHY + construct
-    ///   keywords
-    /// - "find authentication code" ❌ MISSING: which construct? struct? trait?
-    ///   impl?
-    /// - "tool definitions" ❌ MISSING: struct? trait? type? be specific
-    /// - "how it works" (too vague - specify what you want to understand)
-    /// - Long rambling explanation without clear intent (keep it focused)
+    /// Reranking query: WHY you need this code. Include keywords (struct/trait/impl/fn).
     pub use_case: String,
 }
 
@@ -438,19 +306,14 @@ impl SearchQuery {
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/semantic_search.md"]
 pub struct SemanticSearch {
-    /// List of search queries to execute in parallel. Using multiple queries
-    /// (2-3) with varied phrasings significantly improves results - each query
-    /// captures different aspects of what you're looking for. Each query pairs
-    /// a search term with a use_case for reranking. Example: for
-    /// authentication, try "user login verification", "token generation",
-    /// "OAuth flow".
+    /// 2-3 varied queries recommended for best results.
     pub queries: Vec<SearchQuery>,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/fs_remove.md"]
 pub struct FSRemove {
-    /// The path of the file to remove (absolute path required)
+    /// Path of file to remove (absolute).
     pub path: String,
 }
 
@@ -465,15 +328,10 @@ pub enum PatchOperation {
     /// Append content after the matched text
     Append,
 
-    /// Should be used only when you want to replace the first occurrence.
-    /// Use only for specific, targeted replacements where you need to modify
-    /// just the first match.
+    /// Replace first occurrence only.
     Replace,
 
-    /// Should be used for renaming variables, functions, types, or any
-    /// widespread replacements across the file. This is the recommended
-    /// choice for consistent refactoring operations as it ensures all
-    /// occurrences are updated.
+    /// Replace all occurrences. Use for renaming/refactoring.
     ReplaceAll,
 
     /// Swap the matched text with another text (search for the second text and
@@ -537,34 +395,35 @@ impl JsonSchema for OutputMode {
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/fs_patch.md"]
 pub struct FSPatch {
-    /// The absolute path to the file to modify
+    /// Absolute path to file to modify.
     #[serde(alias = "path")]
     pub file_path: String,
 
-    /// The text to replace
+    /// Text to replace.
     #[serde(alias = "search")]
     pub old_string: String,
 
-    /// The text to replace it with (must be different from old_string)
+    /// Replace old_string with new_string. Must differ.
     #[serde(alias = "content")]
     pub new_string: String,
 
     /// Replace all occurrences of old_string (default false)
+    /// Replace all occurrences (default false).
     #[serde(default)]
     #[schemars(default)]
     pub replace_all: bool,
 }
 
-/// A single edit operation in a multi-patch
+/// A single edit operation in a multi-patch.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct PatchEdit {
-    /// The text to replace
+    /// Text to replace.
     pub old_string: String,
 
-    /// The text to replace it with (must be different from old_string)
+    /// Replace old_string with new_string. Must differ.
     pub new_string: String,
 
-    /// Replace all occurrences of old_string (default false)
+    /// Replace all occurrences (default false).
     #[serde(default)]
     #[schemars(default)]
     pub replace_all: bool,
@@ -573,65 +432,55 @@ pub struct PatchEdit {
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/fs_multi_patch.md"]
 pub struct FSMultiPatch {
-    /// The absolute path to the file to modify
+    /// Absolute path to file to modify.
     pub file_path: String,
 
-    /// Array of edit operations to perform sequentially on the file
+    /// Edit operations applied sequentially.
     pub edits: Vec<PatchEdit>,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/fs_undo.md"]
 pub struct FSUndo {
-    /// The absolute path of the file to revert to its previous state.
+    /// Absolute path of file to revert to prior state.
     pub path: String,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/shell.md"]
 pub struct Shell {
-    /// The shell command to execute.
+    /// Command to execute.
     pub command: String,
 
-    /// The working directory where the command should be executed.
-    /// If not specified, defaults to the current working directory from the
-    /// environment.
+    /// Working directory. Defaults to cwd.
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cwd: Option<PathBuf>,
 
-    /// Whether to preserve ANSI escape codes in the output.
-    /// If true, ANSI escape codes will be preserved in the output.
-    /// If false (default), ANSI escape codes will be stripped from the output.
+    /// Preserve ANSI codes in output.
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
     pub keep_ansi: bool,
 
-    /// Environment variable names to pass to command execution (e.g., ["PATH",
-    /// "HOME", "USER"]). The system automatically reads the specified
-    /// values and applies them during command execution.
+    /// Env var names to pass (e.g. ["PATH", "HOME"]).
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env: Option<Vec<String>>,
 
-    /// Clear, concise description of what this command does. Recommended to be
-    /// 5-10 words for simple commands. For complex commands with pipes or
-    /// multiple operations, provide more context. Examples: "Lists files in
-    /// current directory", "Installs package dependencies", "Compiles Rust
-    /// project with release optimizations".
+    /// Short description (5-10 words).
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
 
-/// Input type for the net fetch tool
+/// Fetch URL content as markdown or raw text.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/net_fetch.md"]
 pub struct NetFetch {
-    /// URL to fetch
+    /// URL to fetch.
     pub url: String,
 
-    /// Get raw content without any markdown conversion (default: false)
+    /// Get raw content without markdown conversion (default: false).
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw: Option<bool>,
@@ -640,31 +489,30 @@ pub struct NetFetch {
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/followup.md"]
 pub struct Followup {
-    /// Question to ask the user
+    /// Question to ask.
     pub question: String,
 
-    /// If true, allows selecting multiple options; if false (default), only one
-    /// option can be selected
+    /// Allow multiple selections (default: single).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub multiple: Option<bool>,
 
-    /// First option to choose from
+    /// Option 1
     #[serde(skip_serializing_if = "Option::is_none")]
     pub option1: Option<String>,
 
-    /// Second option to choose from
+    /// Option 2
     #[serde(skip_serializing_if = "Option::is_none")]
     pub option2: Option<String>,
 
-    /// Third option to choose from
+    /// Option 3
     #[serde(skip_serializing_if = "Option::is_none")]
     pub option3: Option<String>,
 
-    /// Fourth option to choose from
+    /// Option 4
     #[serde(skip_serializing_if = "Option::is_none")]
     pub option4: Option<String>,
 
-    /// Fifth option to choose from
+    /// Option 5
     #[serde(skip_serializing_if = "Option::is_none")]
     pub option5: Option<String>,
 }
@@ -672,46 +520,36 @@ pub struct Followup {
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/plan_create.md"]
 pub struct PlanCreate {
-    /// The name of the plan (will be used in the filename)
+    /// Plan name (used in filename).
     pub plan_name: String,
 
-    /// The version of the plan (e.g., "v1", "v2", "1.0")
+    /// Version (e.g. "v1", "1.0").
     pub version: String,
 
-    /// The content to write to the plan file. This should be the complete
-    /// plan content in markdown format.
+    /// Complete plan content in markdown.
     pub content: String,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/skill_fetch.md"]
 pub struct SkillFetch {
-    /// The name of the skill to fetch (e.g., "pdf", "code_review")
+    /// Skill name (e.g. "pdf", "code_review").
     pub name: String,
 }
 
-/// A single todo item sent by the model.
-///
-/// The model always provides `content` and `status`. The server uses `content`
-/// as the key: if an item with the same content already exists it is updated,
-/// otherwise a new item is added. Setting `status` to `cancelled` removes the
-/// item from the list entirely. IDs are managed by the server and never
-/// exposed to the model.
+/// A single todo item. `content` is the unique key for matching.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct TodoItem {
-    /// Description of the task. Used as the unique key to match existing todos.
+    /// Task description. Used as unique key to match existing todos.
     pub content: String,
-    /// Current status of the task. Use `cancelled` to remove the item.
+    /// `pending`|`in_progress`|`completed`|`cancelled`
     pub status: crate::TodoStatus,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 #[tool_description_file = "crates/forge_domain/src/tools/descriptions/todo_write.md"]
 pub struct TodoWrite {
-    /// List of todo items to create or update. Each item must have `content`
-    /// and `status`. The server matches on `content` — if an item with the
-    /// same content exists it is updated; otherwise a new item is added.
-    /// Set `status` to `cancelled` to remove an item.
+    /// Todo items to add/update. `content` is unique key. `cancelled` removes item.
     #[eserde(compat)]
     pub todos: Vec<TodoItem>,
 }
@@ -724,14 +562,7 @@ fn default_raw() -> Option<bool> {
     Some(false)
 }
 
-/// Retrieves content from URLs as markdown or raw text. Enables access to
-/// current online information including websites, APIs and documentation. Use
-/// for obtaining up-to-date information beyond training data, verifying facts,
-/// or retrieving specific online content. Handles HTTP/HTTPS and converts HTML
-/// to readable markdown by default. Cannot access private/restricted resources
-/// requiring authentication. Respects robots.txt and may be blocked by
-/// anti-scraping measures. For large pages, returns the first 40,000 characters
-/// and stores the complete content in a temporary file for subsequent access.
+/// Fetch URL content as markdown or raw text.
 #[derive(Default, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 pub struct FetchInput {
     /// URL to fetch
@@ -740,46 +571,32 @@ pub struct FetchInput {
     #[serde(default = "default_raw")]
     pub raw: Option<bool>,
 }
-/// Request to list files and directories within the specified directory. If
-/// recursive is true, it will list all files and directories recursively. If
-/// recursive is false or not provided, it will only list the top-level
-/// contents. The path must be absolute. Do not use this tool to confirm the
-/// existence of files you may have created, as the user will let you know if
-/// the files were created successfully or not.
+/// List files/directories at path.
 #[derive(Default, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 pub struct FSListInput {
     /// The path of the directory to list contents for (absolute path required)
     pub path: String,
-    /// Whether to list files recursively. Use true for recursive listing, false
-    /// or omit for top-level only.
+    /// Recursive listing (default: top-level only).
     pub recursive: Option<bool>,
 }
 
-/// Request to retrieve detailed metadata about a file or directory at the
-/// specified path. Returns comprehensive information including size, creation
-/// time, last modified time, permissions, and type. Path must be absolute. Use
-/// this when you need to understand file characteristics without reading the
-/// actual content.
+/// File/dir metadata (size, permissions, timestamps).
 #[derive(Default, Deserialize, JsonSchema, ToolDescription, PartialEq)]
 pub struct FSFileInfoInput {
-    /// The path of the file or directory to inspect (absolute path required)
+    /// Path to file/dir to inspect (absolute).
     pub path: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
 pub struct UndoInput {
-    /// The absolute path of the file to revert to its previous state. Must be
-    /// the exact path that was previously modified, created, or deleted by
-    /// a Forge file operation. If the file was deleted, provide the
-    /// original path it had before deletion. The system requires a prior
-    /// snapshot for this path.
+    /// Absolute path of file to revert. Must match prior modification.
     pub path: String,
 }
 
 /// Input for the select tool
 #[derive(Deserialize, JsonSchema)]
 pub struct SelectInput {
-    /// Question to ask the user
+    /// Question to ask.
     pub question: String,
 
     /// First option to choose from
@@ -797,8 +614,7 @@ pub struct SelectInput {
     /// Fifth option to choose from
     pub option5: Option<String>,
 
-    /// If true, allows selecting multiple options; if false (default), only one
-    /// option can be selected
+    /// Allow multiple selections (default: single).
     #[schemars(default)]
     pub multiple: Option<bool>,
 }
