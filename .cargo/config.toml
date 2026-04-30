@@ -1,0 +1,35 @@
+[target.aarch64-linux-android]
+linker = "zig cc"
+ar = "zig ar"
+rustflags = ["-C", "link-arg=-Wl,--no-as-needed", "-C", "link-arg=-Wl,--no-undefined"]
+
+# Optimized configuration for Termux/mobile compilation
+# Reduces memory usage during linking
+
+[build]
+# Use more codegen units to reduce memory pressure
+# This trades some compile time and optimization for lower memory usage
+codegen-units = 256
+
+[profile.release]
+# Disable LTO for mobile environments to reduce memory usage
+# LTO is very memory intensive during linking
+lto = false
+
+# Reduce optimization level slightly to save memory
+opt-level = 2
+
+# Use more codegen units for release builds
+codegen-units = 256
+
+# Keep strip to reduce binary size
+strip = true
+
+# Disable incremental compilation to save memory
+incremental = false
+
+[profile.dev]
+# Also optimize dev builds slightly for better performance
+opt-level = 1
+# Use more codegen units in dev mode
+codegen-units = 256
