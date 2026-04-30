@@ -1014,7 +1014,7 @@ mod env_tests {
             _url: &reqwest::Url,
             _headers: Option<reqwest::header::HeaderMap>,
             _body: bytes::Bytes,
-        ) -> anyhow::Result<reqwest_eventsource::EventSource> {
+        ) -> anyhow::Result<forge_eventsource::EventSource> {
             Err(anyhow::anyhow!("HTTP not implemented in mock"))
         }
     }
@@ -1687,7 +1687,7 @@ mod env_tests {
                 _url: &reqwest::Url,
                 _headers: Option<reqwest::header::HeaderMap>,
                 _body: bytes::Bytes,
-            ) -> anyhow::Result<reqwest_eventsource::EventSource> {
+            ) -> anyhow::Result<forge_eventsource::EventSource> {
                 Err(anyhow::anyhow!("HTTP not implemented in mock"))
             }
         }

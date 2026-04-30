@@ -7,9 +7,9 @@ use forge_app::{
 use forge_domain::{
     AuthMethod, CommandOutput, FileInfo as FileInfoData, McpServerConfig, ProviderId, URLParamSpec,
 };
+use forge_eventsource::EventSource;
 use reqwest::header::HeaderMap;
 use reqwest::{Response, Url};
-use reqwest_eventsource::EventSource;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
