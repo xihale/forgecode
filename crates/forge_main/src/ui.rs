@@ -1822,6 +1822,37 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         Ok(())
     }
 
+    /// Loads a specific skill by name and sends its content as a message.
+    ///
+    /// This allows users to manually activate a skill via `/skill:<name>` or
+    /// `:skill:<name>`, which fetches the skill and injects its instructions
+    /// into the conversation as a user message.
+    async fn on_skill_load(&mut self, skill_name: String) -> anyhow::Result<()> {
+        let skills = self.api.get_skills().await?;
+
+        let skill = skills
+            .into_iter()
+            .find(|s| s.name == skill_name)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Skill '{skill_name}' not found. Use :skill to list available skills."
+                )
+            })?;
+
+        self.writeln_title(TitleFormat::info(format!(
+            "Loaded skill: {}",
+            skill.name
+        )))?;
+        self.writeln(format!("  {}", skill.description).dimmed())?;
+
+        // Send the skill content as a message to the conversation
+        let message = format!(
+            "Use the following skill:\n\n{}",
+            skill.command
+        );
+        self.on_message(Some(message)).await
+    }
+
     /// Lists files and directories in the current workspace.
     ///
     /// Uses the same `Walker::max_all()` configuration as the REPL file picker
@@ -2733,6 +2764,9 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             }
             AppCommand::Skill => {
                 self.on_show_skills(false, false).await?;
+            }
+            AppCommand::SkillLoad(skill_name) => {
+                self.on_skill_load(skill_name).await?;
             }
             AppCommand::Edit { content } => {
                 let initial = if content.is_empty() {
@@ -4401,8 +4435,8 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         }
 
         // Execute independent operations in parallel to improve performance
-        let (agents_result, commands_result) =
-            tokio::join!(self.api.get_agent_infos(), self.api.get_commands());
+        let (agents_result, commands_result, skills_result) =
+            tokio::join!(self.api.get_agent_infos(), self.api.get_commands(), self.api.get_skills());
 
         // Register agent commands with proper error handling and user feedback
         match agents_result {
@@ -4425,6 +4459,12 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
 
         // Register all the commands
         self.command.register_all(commands_result?);
+
+        // Register skill commands for auto-completion
+        if let Ok(skills) = skills_result {
+            let skill_names = skills.into_iter().map(|s| s.name).collect();
+            self.command.register_skill_commands(skill_names);
+        }
 
         self.state = UIState::new(self.api.environment());
         self.update_model(operating_model);

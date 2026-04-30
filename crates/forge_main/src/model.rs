@@ -235,6 +235,30 @@ impl ForgeCommandManager {
         result
     }
 
+    /// Registers skill commands for auto-completion.
+    /// Each skill gets a `skill:<name>` command entry.
+    pub fn register_skill_commands(&self, skill_names: Vec<String>) {
+        let mut guard = self.commands.lock().unwrap();
+
+        // Remove existing skill: commands
+        guard.retain(|cmd| !cmd.name.starts_with("skill:"));
+
+        // Add new skill commands
+        for skill_name in skill_names {
+            let command_name = format!("skill:{skill_name}");
+            let description = format!("✨ Load skill: {skill_name}");
+
+            guard.push(ForgeCommand {
+                name: command_name,
+                description,
+                value: Some(skill_name),
+            });
+        }
+
+        // Sort commands for consistent completion behavior
+        guard.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+
     /// Finds a command by name.
     fn find(&self, command: &str) -> Option<ForgeCommand> {
         self.commands
@@ -317,6 +341,17 @@ impl ForgeCommandManager {
             .filter(|c| *c == '/' || *c == ':')
             .unwrap_or(':');
         let rest: Vec<&str> = tokens.collect();
+
+        // Detect skill:xxx pattern early — bypasses Clap entirely.
+        if let Some(skill_name) = bare.strip_prefix("skill:") {
+            let skill_name = skill_name.trim().to_string();
+            if skill_name.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "Usage: {command_prefix}skill:<name>. Please specify a skill name."
+                ));
+            }
+            return Ok(AppCommand::SkillLoad(skill_name));
+        }
 
         // Build argv: [bare_command, arg1, arg2, …]
         let argv: Vec<&str> = std::iter::once(bare).chain(rest.iter().copied()).collect();
@@ -706,6 +741,11 @@ pub enum AppCommand {
     /// Disable sudo mode for all shell commands in this session.
     #[strum(props(usage = "Disable sudo mode for shell commands"))]
     Unsu,
+
+    /// Load and activate a specific skill by name
+    #[strum(props(usage = "Load and activate a specific skill"))]
+    #[command(skip)]
+    SkillLoad(String),
 }
 
 impl AppCommand {
@@ -759,6 +799,7 @@ impl AppCommand {
             AppCommand::WorkspaceStatus => "workspace-status",
             AppCommand::WorkspaceInfo => "workspace-info",
             AppCommand::WorkspaceInit => "workspace-init",
+            AppCommand::SkillLoad(skill_name) => skill_name,
         }
     }
 
@@ -776,6 +817,7 @@ impl AppCommand {
                 | AppCommand::Custom(_)
                 | AppCommand::Shell(_)
                 | AppCommand::AgentSwitch(_)
+                | AppCommand::SkillLoad(_)
                 | AppCommand::Rename { .. }
         )
     }
