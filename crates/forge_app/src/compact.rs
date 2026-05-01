@@ -153,6 +153,17 @@ impl Compactor {
         // Remove all droppable messages from the context
         context.messages.retain(|msg| !msg.is_droppable());
 
+        // Clear prompt_tokens on all messages so that token_count() falls back
+        // to the character-based approximation. After compaction the retained
+        // messages still carry stale prompt_tokens from before compaction,
+        // which would make the right-prompt display an incorrect (much larger)
+        // context size.
+        for entry in &mut context.messages {
+            if let Some(usage) = &mut entry.usage {
+                usage.prompt_tokens = forge_domain::TokenCount::Actual(0);
+            }
+        }
+
         // Inject preserved reasoning into first assistant message (if empty)
         if let Some(reasoning) = reasoning_details
             && let Some(ContextMessage::Text(msg)) = context
@@ -632,10 +643,11 @@ mod tests {
         );
 
         // The summary entry at index 0 should carry the accumulated usage from
-        // indices 1 and 3 (inside_usage + inside_usage2)
+        // indices 1 and 3 (inside_usage + inside_usage2), but prompt_tokens is
+        // zeroed so token_count() falls back to the approximation after compaction
         let expected_compacted_usage = Usage {
             total_tokens: TokenCount::Actual(50000),
-            prompt_tokens: TokenCount::Actual(45000),
+            prompt_tokens: TokenCount::Actual(0),
             completion_tokens: TokenCount::Actual(5000),
             cached_tokens: TokenCount::Actual(0),
             cost: Some(1.5),
@@ -649,9 +661,10 @@ mod tests {
 
         // accumulate_usage() must sum both the compacted range usage (on the summary
         // message) and the surviving outside_usage — total = inside + inside2 + outside
+        // prompt_tokens are zeroed after compaction so token_count() uses approximation
         let expected_total_usage = Usage {
             total_tokens: TokenCount::Actual(100000),
-            prompt_tokens: TokenCount::Actual(90000),
+            prompt_tokens: TokenCount::Actual(0),
             completion_tokens: TokenCount::Actual(10000),
             cached_tokens: TokenCount::Actual(0),
             cost: Some(3.0),
