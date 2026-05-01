@@ -7,7 +7,7 @@ expression: tools
   "type": "object",
   "properties": {
     "file_path": {
-      "description": "Absolute path to the file to read.",
+      "description": "Absolute path to file to read.",
       "type": "string"
     },
     "range": {
@@ -15,13 +15,13 @@ expression: tools
       "type": "object",
       "properties": {
         "end_line": {
-          "description": "Inclusive 1-based last line.",
+          "description": "1-based last line (inclusive).",
           "type": "integer",
           "format": "int32",
           "nullable": true
         },
         "start_line": {
-          "description": "1-based first line.",
+          "description": "1-based first line (inclusive).",
           "type": "integer",
           "format": "int32",
           "nullable": true
@@ -31,7 +31,7 @@ expression: tools
       "nullable": true
     },
     "show_line_numbers": {
-      "description": "If true, prefixes each line with its line index (starting at 1).\nDefaults to true.",
+      "description": "Show line numbers. Defaults to true.",
       "type": "boolean",
       "default": true
     }
@@ -46,15 +46,15 @@ expression: tools
   "type": "object",
   "properties": {
     "content": {
-      "description": "The content to write to the file",
+      "description": "Content to write.",
       "type": "string"
     },
     "file_path": {
-      "description": "The absolute path to the file to write (must be absolute, not relative)",
+      "description": "Absolute path to file.",
       "type": "string"
     },
     "overwrite": {
-      "description": "If set to true, existing files will be overwritten. If not set and the\nfile exists, an error will be returned with the content of the\nexisting file.",
+      "description": "Overwrite existing files. Error if false and file exists.",
       "type": "boolean"
     }
   },
@@ -68,62 +68,62 @@ expression: tools
   "type": "object",
   "properties": {
     "-A": {
-      "description": "Number of lines to show after each match (rg -A). Requires output_mode:\n\"content\", ignored otherwise.",
+      "description": "Lines after match (rg -A). Requires output_mode: \"content\".",
       "type": "integer",
       "format": "uint32",
       "minimum": 0,
       "nullable": true
     },
     "-B": {
-      "description": "Number of lines to show before each match (rg -B). Requires output_mode:\n\"content\", ignored otherwise.",
+      "description": "Lines before match (rg -B). Requires output_mode: \"content\".",
       "type": "integer",
       "format": "uint32",
       "minimum": 0,
       "nullable": true
     },
     "-C": {
-      "description": "Number of lines to show before and after each match (rg -C). Requires\noutput_mode: \"content\", ignored otherwise.",
+      "description": "Lines before and after match (rg -C). Requires output_mode: \"content\".",
       "type": "integer",
       "format": "uint32",
       "minimum": 0,
       "nullable": true
     },
     "-i": {
-      "description": "Case insensitive search (rg -i)",
+      "description": "Case insensitive search (rg -i).",
       "type": "boolean",
       "nullable": true
     },
     "-n": {
-      "description": "Show line numbers in output (rg -n). Requires output_mode: \"content\",\nignored otherwise.",
+      "description": "Show line numbers (rg -n). Requires output_mode: \"content\".",
       "type": "boolean",
       "nullable": true
     },
     "glob": {
-      "description": "Glob pattern to filter files (e.g. \"*.js\", \"*.{ts,tsx}\") - maps to rg\n--glob",
+      "description": "Glob filter (e.g. \"*.js\", \"*.{ts,tsx}\").",
       "type": "string",
       "nullable": true
     },
     "head_limit": {
-      "description": "Limit output to first N lines/entries, equivalent to \"| head -N\". Works\nacross all output modes: content (limits output lines),\nfiles_with_matches (limits file paths), count (limits count entries).\nWhen unspecified, shows all results from ripgrep.",
+      "description": "Limit output to first N entries. Works across all output modes.",
       "type": "integer",
       "format": "uint32",
       "minimum": 0,
       "nullable": true
     },
     "multiline": {
-      "description": "Enable multiline mode where . matches newlines and patterns can span\nlines (rg -U --multiline-dotall). Default: false.",
+      "description": "Multiline mode: . matches newlines (rg -U --multiline-dotall).",
       "type": "boolean",
       "nullable": true
     },
     "offset": {
-      "description": "Skip first N lines/entries before applying head_limit",
+      "description": "Skip first N entries before applying head_limit.",
       "type": "integer",
       "format": "uint32",
       "minimum": 0,
       "nullable": true
     },
     "output_mode": {
-      "description": "Output mode: \"content\" shows matching lines (supports -A/-B/-C context,\n-n line numbers, head_limit), \"files_with_matches\" shows file paths\n(supports head_limit), \"count\" shows match counts (supports head_limit).\nDefaults to \"files_with_matches\".",
+      "description": "Output mode: \"content\" (lines), \"files_with_matches\" (paths), \"count\".",
       "type": "string",
       "enum": [
         "content",
@@ -134,16 +134,16 @@ expression: tools
       "nullable": true
     },
     "path": {
-      "description": "File or directory to search in (rg PATH). Defaults to current working\ndirectory.",
+      "description": "File or directory to search in. Defaults to cwd.",
       "type": "string",
       "nullable": true
     },
     "pattern": {
-      "description": "The regular expression pattern to search for in file contents.",
+      "description": "Regex pattern to search for.",
       "type": "string"
     },
     "type": {
-      "description": "File type to search (rg --type). Common types: js, py, rust, go, java,\netc. More efficient than include for standard file types.",
+      "description": "File type (rg --type). E.g. js, py, rust, go, java.",
       "type": "string",
       "nullable": true
     }
@@ -164,11 +164,11 @@ expression: tools
         "type": "object",
         "properties": {
           "query": {
-            "description": "Semantic embedding query describing WHAT the code does. Use specific\ntechnical terms (e.g., \"OAuth2 token refresh with retry\").",
+            "description": "Embedding query: WHAT the code does. Use specific technical terms.",
             "type": "string"
           },
           "use_case": {
-            "description": "Reranking query describing your INTENT and WHY you need this code.\nMUST include codebase construct keywords (struct, trait, impl, fn,\nfunction, class) when searching for code — without these you get\ndocumentation instead of code.",
+            "description": "Reranking query: WHY you need this code. Include keywords (struct/trait/impl/fn).",
             "type": "string"
           }
         },
@@ -188,7 +188,7 @@ expression: tools
   "type": "object",
   "properties": {
     "path": {
-      "description": "The path of the file to remove (absolute path required)",
+      "description": "Path of file to remove (absolute).",
       "type": "string"
     }
   },
@@ -201,19 +201,19 @@ expression: tools
   "type": "object",
   "properties": {
     "file_path": {
-      "description": "The absolute path to the file to modify",
+      "description": "Absolute path to file to modify.",
       "type": "string"
     },
     "new_string": {
-      "description": "The text to replace it with (must be different from old_string)",
+      "description": "Replace old_string with new_string. Must differ.",
       "type": "string"
     },
     "old_string": {
-      "description": "The text to replace",
+      "description": "Text to replace.",
       "type": "string"
     },
     "replace_all": {
-      "description": "Replace all occurrences of old_string (default false)",
+      "description": "Replace all occurrences of old_string (default false)\nReplace all occurrences (default false).",
       "type": "boolean",
       "default": false
     }
@@ -229,22 +229,22 @@ expression: tools
   "type": "object",
   "properties": {
     "edits": {
-      "description": "Array of edit operations to perform sequentially on the file",
+      "description": "Edit operations applied sequentially.",
       "type": "array",
       "items": {
-        "description": "A single edit operation in a multi-patch",
+        "description": "A single edit operation in a multi-patch.",
         "type": "object",
         "properties": {
           "new_string": {
-            "description": "The text to replace it with (must be different from old_string)",
+            "description": "Replace old_string with new_string. Must differ.",
             "type": "string"
           },
           "old_string": {
-            "description": "The text to replace",
+            "description": "Text to replace.",
             "type": "string"
           },
           "replace_all": {
-            "description": "Replace all occurrences of old_string (default false)",
+            "description": "Replace all occurrences (default false).",
             "type": "boolean",
             "default": false
           }
@@ -256,7 +256,7 @@ expression: tools
       }
     },
     "file_path": {
-      "description": "The absolute path to the file to modify",
+      "description": "Absolute path to file to modify.",
       "type": "string"
     }
   },
@@ -270,7 +270,7 @@ expression: tools
   "type": "object",
   "properties": {
     "path": {
-      "description": "The absolute path of the file to revert to its previous state.",
+      "description": "Absolute path of file to revert to prior state.",
       "type": "string"
     }
   },
@@ -283,21 +283,21 @@ expression: tools
   "type": "object",
   "properties": {
     "command": {
-      "description": "The shell command to execute.",
+      "description": "Command to execute.",
       "type": "string"
     },
     "cwd": {
-      "description": "The working directory where the command should be executed.\nIf not specified, defaults to the current working directory from the\nenvironment.",
+      "description": "Working directory. Defaults to cwd.",
       "type": "string",
       "nullable": true
     },
     "description": {
-      "description": "Clear, concise description of what this command does. Recommended to be\n5-10 words for simple commands. For complex commands with pipes or\nmultiple operations, provide more context. Examples: \"Lists files in\ncurrent directory\", \"Installs package dependencies\", \"Compiles Rust\nproject with release optimizations\".",
+      "description": "Short description (5-10 words).",
       "type": "string",
       "nullable": true
     },
     "env": {
-      "description": "Environment variable names to pass to command execution (e.g., [\"PATH\",\n\"HOME\", \"USER\"]). The system automatically reads the specified\nvalues and applies them during command execution.",
+      "description": "Env var names to pass (e.g. [\"PATH\", \"HOME\"]).",
       "type": "array",
       "items": {
         "type": "string"
@@ -305,7 +305,7 @@ expression: tools
       "nullable": true
     },
     "keep_ansi": {
-      "description": "Whether to preserve ANSI escape codes in the output.\nIf true, ANSI escape codes will be preserved in the output.\nIf false (default), ANSI escape codes will be stripped from the output.",
+      "description": "Preserve ANSI codes in output.",
       "type": "boolean"
     }
   },
@@ -315,16 +315,16 @@ expression: tools
 }
 {
   "title": "NetFetch",
-  "description": "Input type for the net fetch tool",
+  "description": "Fetch URL content as markdown or raw text.",
   "type": "object",
   "properties": {
     "raw": {
-      "description": "Get raw content without any markdown conversion (default: false)",
+      "description": "Get raw content without markdown conversion (default: false).",
       "type": "boolean",
       "nullable": true
     },
     "url": {
-      "description": "URL to fetch",
+      "description": "URL to fetch.",
       "type": "string"
     }
   },
@@ -337,37 +337,37 @@ expression: tools
   "type": "object",
   "properties": {
     "multiple": {
-      "description": "If true, allows selecting multiple options; if false (default), only one\noption can be selected",
+      "description": "Allow multiple selections (default: single).",
       "type": "boolean",
       "nullable": true
     },
     "option1": {
-      "description": "First option to choose from",
+      "description": "Option 1",
       "type": "string",
       "nullable": true
     },
     "option2": {
-      "description": "Second option to choose from",
+      "description": "Option 2",
       "type": "string",
       "nullable": true
     },
     "option3": {
-      "description": "Third option to choose from",
+      "description": "Option 3",
       "type": "string",
       "nullable": true
     },
     "option4": {
-      "description": "Fourth option to choose from",
+      "description": "Option 4",
       "type": "string",
       "nullable": true
     },
     "option5": {
-      "description": "Fifth option to choose from",
+      "description": "Option 5",
       "type": "string",
       "nullable": true
     },
     "question": {
-      "description": "Question to ask the user",
+      "description": "Question to ask.",
       "type": "string"
     }
   },
@@ -380,15 +380,15 @@ expression: tools
   "type": "object",
   "properties": {
     "content": {
-      "description": "The content to write to the plan file. This should be the complete\nplan content in markdown format.",
+      "description": "Complete plan content in markdown.",
       "type": "string"
     },
     "plan_name": {
-      "description": "The name of the plan (will be used in the filename)",
+      "description": "Plan name (used in filename).",
       "type": "string"
     },
     "version": {
-      "description": "The version of the plan (e.g., \"v1\", \"v2\", \"1.0\")",
+      "description": "Version (e.g. \"v1\", \"1.0\").",
       "type": "string"
     }
   },
@@ -403,7 +403,7 @@ expression: tools
   "type": "object",
   "properties": {
     "name": {
-      "description": "The name of the skill to fetch (e.g., \"pdf\", \"code_review\")",
+      "description": "Skill name (e.g. \"pdf\", \"code_review\").",
       "type": "string"
     }
   },
@@ -458,16 +458,16 @@ expression: tools
   "type": "object",
   "properties": {
     "agent_id": {
-      "description": "The ID of the specialized agent to delegate to (e.g., \"forge\", \"muse\",\n\"sage\")",
+      "description": "Agent ID (e.g. \"forge\", \"muse\", \"sage\").",
       "type": "string"
     },
     "session_id": {
-      "description": "Optional session ID to continue an existing agent session. If not\nprovided, a new stateless session will be created. Use this to\nmaintain context across multiple task invocations with the same\nagent.",
+      "description": "Optional session ID for continuing existing sessions.",
       "type": "string",
       "nullable": true
     },
     "tasks": {
-      "description": "A list of clear and detailed descriptions of the tasks to be performed\nby the agent in parallel. Provide sufficient context and specific\nrequirements to enable the agent to understand and execute the work\naccurately.",
+      "description": "Task descriptions for parallel execution by the agent.",
       "type": "array",
       "items": {
         "type": "string"
