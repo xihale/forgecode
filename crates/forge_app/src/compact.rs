@@ -675,7 +675,7 @@ mod tests {
             None,
         ));
         entry.usage = Some(Usage {
-            total_tokens: TokenCount::Actual(10),
+            prompt_tokens: TokenCount::Actual(10),
             ..Default::default()
         });
 
