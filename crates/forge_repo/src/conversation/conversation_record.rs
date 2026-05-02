@@ -575,6 +575,7 @@ impl TryFrom<ContextMessageRecord> for forge_domain::MessageEntry {
 
     fn try_from(record: ContextMessageRecord) -> anyhow::Result<Self> {
         Ok(forge_domain::MessageEntry {
+            id: None, // Backward compat: old records have no entry ID
             message: record.message.try_into()?,
             usage: record.usage.map(Into::into),
         })

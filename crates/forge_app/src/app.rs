@@ -289,6 +289,87 @@ impl<S: Services + EnvironmentInfra<Config = forge_config::ForgeConfig>> ForgeAp
         ))
     }
 
+    /// Branches a conversation at a specific message entry.
+    ///
+    /// Creates a new conversation (clone) truncated at the specified entry.
+    /// The removed messages are summarized and injected as a branch summary
+    /// so the model knows what was previously attempted.
+    ///
+    /// # Arguments
+    ///
+    /// * `active_agent_id` - The active agent for compaction config
+    /// * `conversation_id` - The conversation to branch
+    /// * `entry_id` - The entry ID to branch at (messages after this are removed)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the conversation or entry is not found.
+    pub async fn branch_conversation(
+        &self,
+        active_agent_id: AgentId,
+        conversation_id: &ConversationId,
+        message_index: usize,
+        with_compact: bool,
+    ) -> Result<Conversation> {
+        use crate::compact::Compactor;
+
+        let mut conversation = self
+            .services
+            .find_conversation(conversation_id)
+            .await?
+            .ok_or_else(|| forge_domain::Error::ConversationNotFound(*conversation_id))?;
+
+        let context = conversation
+            .context
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("Conversation has no context"))?;
+
+        anyhow::ensure!(
+            message_index < context.messages.len(),
+            "Message index {} out of range (0..{})",
+            message_index,
+            context.messages.len()
+        );
+
+        // Truncate after the entry (keep up to and including the entry)
+        let removed = context.truncate_at(message_index + 1);
+
+        // Optionally compact the removed messages and inject as summary
+        if with_compact && !removed.is_empty() {
+            let forge_config = self.services.get_config()?;
+            let agent = self.services.get_agent(&active_agent_id).await?;
+
+            if let Some(agent) = agent {
+                let compact = agent
+                    .apply_config(&forge_config)
+                    .set_compact_model_if_none()
+                    .compact;
+                let environment = self.services.get_environment();
+                let compactor = Compactor::new(compact, environment);
+
+                let summary = compactor.branch_summary(&removed)?;
+
+                if !summary.is_empty() {
+                    context.messages.push(
+                        ContextMessage::user(
+                            summary,
+                            None,
+                        )
+                        .into(),
+                    );
+                }
+            }
+        }
+
+        // Create new conversation with new ID
+        let new_id = ConversationId::generate();
+        conversation.id = new_id;
+
+        self.services.upsert_conversation(conversation.clone()).await?;
+
+        Ok(conversation)
+    }
+
     pub async fn list_tools(&self) -> Result<ToolsOverview> {
         self.tool_registry.tools_overview().await
     }

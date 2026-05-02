@@ -258,6 +258,9 @@ function forge-accept-line() {
         clone)
             _forge_action_clone "$input_text"
         ;;
+        branch)
+            _forge_action_branch
+        ;;
         rename|rn)
             _forge_action_rename "$input_text"
         ;;

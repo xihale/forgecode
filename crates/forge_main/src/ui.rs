@@ -998,6 +998,24 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 self.on_clone_conversation(conversation, porcelain).await?;
                 self.spinner.stop(None)?;
             }
+            ConversationCommand::Branch {
+                id,
+                at_index,
+                compact,
+                porcelain,
+            } => {
+                let conversation = self.validate_conversation_exists(&id).await?;
+
+                self.spinner.start(Some("Branching"))?;
+                self.on_branch_conversation(conversation, at_index, compact, porcelain)
+                    .await?;
+                self.spinner.stop(None)?;
+            }
+            ConversationCommand::Tree { id } => {
+                let conversation = self.validate_conversation_exists(&id).await?;
+
+                self.on_show_conversation_tree(conversation).await?;
+            }
             ConversationCommand::Rename { id, name } => {
                 self.validate_conversation_exists(&id).await?;
 
@@ -1027,6 +1045,8 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         conversation.ok_or_else(|| anyhow::anyhow!("Conversation '{conversation_id}' not found"))
     }
 
+    /// Resolves an entry identifier from either an `EntryId` or a 0-based
+    /// index. Exactly one of `at` or `at_index` must be provided.
     async fn on_conversation_delete(
         &mut self,
         conversation_id: ConversationId,
@@ -2799,6 +2819,9 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             AppCommand::Clone { id } => {
                 self.on_slash_clone(id).await?;
             }
+            AppCommand::Branch => {
+                self.on_slash_branch().await?;
+            }
             AppCommand::ConversationRename { name } => {
                 let args = if name.is_empty() {
                     None
@@ -3270,6 +3293,188 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         Ok(())
     }
 
+    /// Branches the current conversation at a selected message.
+    ///
+    /// Shows the conversation tree and prompts the user to enter an entry ID
+    /// to branch at. Creates a new conversation truncated at that point with
+    /// a summary of the removed messages.
+    async fn on_slash_branch(&mut self) -> anyhow::Result<()> {
+        let conversation_id = self
+            .state
+            .conversation_id
+            .ok_or_else(|| anyhow::anyhow!("No active conversation"))?;
+
+        let conversation = self
+            .api
+            .conversation(&conversation_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Conversation not found"))?;
+
+        let context = conversation
+            .context
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Conversation has no context"))?;
+
+        if context.messages.is_empty() {
+            self.writeln_title(TitleFormat::info("Empty conversation"))?;
+            return Ok(());
+        }
+
+        // Build selectable rows from conversation messages
+        #[derive(Clone)]
+        struct EntryRow {
+            message_index: Option<usize>,
+            display: String,
+        }
+        impl Display for EntryRow {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", self.display)
+            }
+        }
+
+        let mut rows: Vec<EntryRow> = Vec::new();
+        // Header row
+        rows.push(EntryRow {
+            message_index: None,
+            display: format!(
+                "{:<12} {}",
+                "ROLE".to_string(),
+                "PREVIEW"
+            ),
+        });
+
+        for (raw_index, entry) in context.messages.iter().enumerate() {
+            // Skip assistant messages that only contain tool calls (no text content)
+            if let forge_domain::ContextMessage::Text(text) = &entry.message {
+                if text.role == forge_domain::Role::Assistant
+                    && text.tool_calls.is_some()
+                    && text.content.trim().is_empty()
+                {
+                    continue;
+                }
+            }
+
+            let role_colored = match &entry.message {
+                forge_domain::ContextMessage::Text(text) => {
+                    let is_real_user = text.content.trim_start().starts_with("<task>")
+                        || text.content.trim_start().starts_with("<feedback>");
+                    match text.role {
+                        forge_domain::Role::User if is_real_user => {
+                            "User".cyan().to_string()
+                        }
+                        forge_domain::Role::User => {
+                            "System".blue().to_string()
+                        }
+                        forge_domain::Role::Assistant => {
+                            "Assistant".bright_green().to_string()
+                        }
+                        forge_domain::Role::System => {
+                            "System".blue().to_string()
+                        }
+                    }
+                }
+                forge_domain::ContextMessage::Tool(result) => {
+                    format!("tool:{}", result.name).dimmed().to_string()
+                }
+                forge_domain::ContextMessage::Image(_) => {
+                    "image".dimmed().to_string()
+                }
+            };
+
+            let preview = entry
+                .content()
+                .map(|c| {
+                    let truncated = if c.len() > 80 {
+                        format!("{}...", &c[..c.char_indices().take(80).last().map(|(i, _)| i).unwrap_or(0)])
+                    } else {
+                        c.to_string()
+                    };
+                    truncated.replace('\n', " ")
+                })
+                .unwrap_or_else(|| match &entry.message {
+                    forge_domain::ContextMessage::Tool(result) => {
+                        let text: Vec<String> = result
+                            .output
+                            .values
+                            .iter()
+                            .filter_map(|v| match v {
+                                forge_domain::ToolValue::Text(t) => Some(t.clone()),
+                                _ => None,
+                            })
+                            .collect();
+                        let joined = text.join(" ");
+                        if joined.len() > 80 {
+                            format!("{}...", &joined[..joined.char_indices().take(80).last().map(|(i, _)| i).unwrap_or(0)])
+                        } else {
+                            joined
+                        }
+                        .replace('\n', " ")
+                    }
+                    _ => "[no preview]".to_string(),
+                });
+
+            let role_str = format!("{:<12}", role_colored);
+
+            rows.push(EntryRow {
+                message_index: Some(raw_index),
+                display: format!("{} {}", role_str, preview),
+            });
+        }
+
+        if rows.len() <= 1 {
+            self.writeln_title(TitleFormat::info("No selectable messages"))?;
+            return Ok(());
+        }
+
+        // Use ForgeWidget for selection (like model/conversation selection)
+        // Start at the last message (most recent) so user scrolls up to older ones
+        let starting_cursor = rows.len().saturating_sub(2); // -1 for header, -1 for 0-index
+        let selected = tokio::task::spawn_blocking(move || {
+            ForgeWidget::select("Branch at", rows)
+                .with_header_lines(1)
+                .with_starting_cursor(starting_cursor)
+                .with_extra_bind("left:half-page-up")
+                .with_extra_bind("right:half-page-down")
+                .prompt()
+        })
+        .await??;
+
+        let selected = match selected {
+            Some(s) => s,
+            None => return Ok(()), // User cancelled
+        };
+
+        let message_index = selected
+            .message_index
+            .ok_or_else(|| anyhow::anyhow!("Selected message has no index"))?;
+
+        // Ask user if they want a summary of the removed messages
+        let with_compact = tokio::task::spawn_blocking(move || {
+            ForgeWidget::confirm("Generate a summary of the removed messages?")
+                .with_default(true)
+                .prompt()
+        })
+        .await??
+        .unwrap_or(false);
+
+        self.spinner.start(Some("Branching"))?;
+        let branched = self
+            .api
+            .branch_conversation(&conversation_id, message_index, with_compact)
+            .await?;
+        self.spinner.stop(None)?;
+
+        let new_id = branched.id;
+        self.state.conversation_id = Some(new_id);
+
+        self.writeln_title(
+            TitleFormat::info("Branched").sub_title(format!(
+                "[{conversation_id} → {new_id}] at message #{message_index}"
+            )),
+        )?;
+
+        Ok(())
+    }
     /// Renames any conversation interactively or by explicit ID and name.
     ///
     /// # Arguments
@@ -4897,6 +5102,137 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             self.writeln_title(
                 TitleFormat::info("Cloned").sub_title(format!("[{} → {}]", original.id, cloned.id)),
             )?;
+        }
+
+        Ok(())
+    }
+
+    /// Branches a conversation at a specific message entry.
+    ///
+    /// Creates a new conversation truncated at the specified message index,
+    /// with a summary of the removed messages injected as context.
+    async fn on_branch_conversation(
+        &mut self,
+        original: Conversation,
+        message_index: usize,
+        with_compact: bool,
+        porcelain: bool,
+    ) -> anyhow::Result<()> {
+        let original_id = original.id;
+        let branched = self.api.branch_conversation(&original_id, message_index, with_compact).await?;
+        let new_id = branched.id;
+
+        if porcelain {
+            println!("{new_id}");
+        } else {
+            self.writeln_title(
+                TitleFormat::info("Branched").sub_title(format!(
+                    "[{} → {}] at message #{}",
+                    original_id, new_id, message_index
+                )),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Displays the conversation message tree.
+    ///
+    /// Shows each message with its index, role, and a preview of the
+    /// content. The index can be used with the branch command's
+    /// `--at-index` flag.
+    async fn on_show_conversation_tree(
+        &mut self,
+        conversation: Conversation,
+    ) -> anyhow::Result<()> {
+        let context = conversation
+            .context
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Conversation has no context"))?;
+
+        if context.messages.is_empty() {
+            self.writeln_title(TitleFormat::info("Empty conversation"))?;
+            return Ok(());
+        }
+
+        let mut display_index: usize = 0;
+
+        for entry in context.messages.iter() {
+            // Skip assistant messages that only contain tool calls (no text content)
+            if let forge_domain::ContextMessage::Text(text) = &entry.message {
+                if text.role == forge_domain::Role::Assistant
+                    && text.tool_calls.is_some()
+                    && text.content.trim().is_empty()
+                {
+                    continue;
+                }
+            }
+
+            let role_colored = match &entry.message {
+                forge_domain::ContextMessage::Text(text) => {
+                    let is_real_user = text.content.trim_start().starts_with("<task>")
+                        || text.content.trim_start().starts_with("<feedback>");
+                    match text.role {
+                        forge_domain::Role::User if is_real_user => {
+                            "User".cyan().to_string()
+                        }
+                        forge_domain::Role::User => {
+                            "System".blue().to_string()
+                        }
+                        forge_domain::Role::Assistant => {
+                            "Assistant".bright_green().to_string()
+                        }
+                        forge_domain::Role::System => {
+                            "System".blue().to_string()
+                        }
+                    }
+                }
+                forge_domain::ContextMessage::Tool(result) => {
+                    format!("tool:{}", result.name).dimmed().to_string()
+                }
+                forge_domain::ContextMessage::Image(_) => {
+                    "image".dimmed().to_string()
+                }
+            };
+
+            let preview = entry
+                .content()
+                .map(|c| {
+                    let truncated = if c.len() > 60 {
+                        format!("{}...", &c[..c.char_indices().take(60).last().map(|(i, _)| i).unwrap_or(0)])
+                    } else {
+                        c.to_string()
+                    };
+                    truncated.replace('\n', " ")
+                })
+                .unwrap_or_else(|| match &entry.message {
+                    forge_domain::ContextMessage::Tool(result) => {
+                        let text: Vec<String> = result
+                            .output
+                            .values
+                            .iter()
+                            .filter_map(|v| match v {
+                                forge_domain::ToolValue::Text(t) => Some(t.clone()),
+                                _ => None,
+                            })
+                            .collect();
+                        let joined = text.join(" ");
+                        if joined.len() > 60 {
+                            format!("{}...", &joined[..joined.char_indices().take(60).last().map(|(i, _)| i).unwrap_or(0)])
+                        } else {
+                            joined
+                        }
+                        .replace('\n', " ")
+                    }
+                    _ => "[no preview]".to_string(),
+                });
+
+            let index_str = format!("{:>3}", display_index);
+            let role_str = format!("{:<12}", role_colored);
+
+            println!("{} {} {}", index_str.dimmed(), role_str, preview);
+
+            display_index += 1;
         }
 
         Ok(())

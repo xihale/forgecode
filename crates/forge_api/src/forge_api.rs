@@ -187,6 +187,22 @@ impl<
             .await
     }
 
+    async fn branch_conversation(
+        &self,
+        conversation_id: &ConversationId,
+        message_index: usize,
+        with_compact: bool,
+    ) -> anyhow::Result<Conversation> {
+        let agent_id = self
+            .services
+            .get_active_agent_id()
+            .await?
+            .unwrap_or_default();
+        self.app()
+            .branch_conversation(agent_id, conversation_id, message_index, with_compact)
+            .await
+    }
+
     fn environment(&self) -> Environment {
         self.services.get_environment().clone()
     }

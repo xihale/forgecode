@@ -823,6 +823,33 @@ pub enum ConversationCommand {
         porcelain: bool,
     },
 
+    /// Branch conversation at a specific message, truncating after it and
+    /// optionally generating a summary of the removed messages.
+    Branch {
+        /// Conversation ID to branch.
+        id: ConversationId,
+
+        /// Index (0-based) of the message to branch at, as shown by
+        /// `forge conversation tree`.
+        #[arg(long)]
+        at_index: usize,
+
+        /// Generate a summary of the removed messages and inject it
+        /// into the new conversation.
+        #[arg(long)]
+        compact: bool,
+
+        /// Output in machine-readable format.
+        #[arg(long)]
+        porcelain: bool,
+    },
+
+    /// Show conversation message tree with entry IDs.
+    Tree {
+        /// Conversation ID.
+        id: ConversationId,
+    },
+
     /// Delete a conversation permanently.
     Delete {
         /// Conversation ID to delete.

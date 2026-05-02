@@ -22,6 +22,7 @@ impl ForgeWidget {
             header_lines: 0,
             preview: None,
             preview_window: None,
+            extra_binds: Vec::new(),
         }
     }
 

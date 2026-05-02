@@ -8,6 +8,7 @@
 # - :conversation -        - Toggle between current and previous conversation (like cd -)
 # - :clone                 - Clone current or selected conversation
 # - :clone <id>            - Clone specific conversation by ID
+# - :branch                - Branch current conversation at a selected message (with fzf)
 # - :copy                  - Copy last assistant message to OS clipboard as raw markdown
 # - :rename <name>         - Rename the current conversation
 # - :conversation-rename   - Rename a conversation (interactive picker)
@@ -359,5 +360,69 @@ function _forge_clone_and_switch() {
         fi
     else
         _forge_log error "Failed to clone conversation: $clone_output"
+    fi
+}
+
+# Action handler: Branch conversation at a selected message
+# Usage: :branch
+function _forge_action_branch() {
+    echo
+
+    if [[ -z "$_FORGE_CONVERSATION_ID" ]]; then
+        _forge_log error "No active conversation. Start a conversation first or use :conversation to select one"
+        return 0
+    fi
+
+    # Get message tree for the current conversation
+    local tree_output
+    tree_output=$($_FORGE_BIN conversation tree "$_FORGE_CONVERSATION_ID" 2>/dev/null)
+
+    if [[ -z "$tree_output" ]]; then
+        _forge_log error "No messages found in the current conversation"
+        return 0
+    fi
+
+    # Use fzf to select a message to branch at
+    local prompt_text="Branch at Message ❯ "
+    local selected_line
+    selected_line=$(echo "$tree_output" | _forge_fzf \
+        --prompt="$prompt_text" \
+        --no-multi \
+        --preview-window=hidden)
+
+    if [[ -z "$selected_line" ]]; then
+        return 0
+    fi
+
+    # Extract index from the selected line (first column)
+    local index=$(echo "$selected_line" | awk '{print $1}')
+
+    if [[ -z "$index" ]]; then
+        _forge_log error "Could not parse message index"
+        return 0
+    fi
+
+    # Execute branch command using index
+    _forge_log info "Branching conversation at message index \033[1m${index}\033[0m"
+    local branch_output
+    branch_output=$($_FORGE_BIN conversation branch "$_FORGE_CONVERSATION_ID" --at-index "$index" --porcelain 2>&1)
+    local branch_exit_code=$?
+
+    if [[ $branch_exit_code -eq 0 ]]; then
+        local new_id="$branch_output"
+
+        if [[ -n "$new_id" ]]; then
+            # Switch to branched conversation and track previous
+            _forge_switch_conversation "$new_id"
+
+            _forge_log success "Branched to new conversation \033[1m${new_id}\033[0m"
+
+            echo
+            _forge_exec conversation show "$new_id"
+        else
+            _forge_log error "Failed to extract new conversation ID from branch output"
+        fi
+    else
+        _forge_log error "Failed to branch conversation: $branch_output"
     fi
 }

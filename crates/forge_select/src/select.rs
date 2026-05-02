@@ -15,6 +15,7 @@ pub struct SelectBuilder<T> {
     pub(crate) header_lines: usize,
     pub(crate) preview: Option<String>,
     pub(crate) preview_window: Option<String>,
+    pub(crate) extra_binds: Vec<String>,
 }
 
 /// Builds an `Fzf` instance with standard layout and an optional header.
@@ -52,6 +53,7 @@ fn build_fzf(
     header_lines: usize,
     preview: Option<&str>,
     preview_window: Option<&str>,
+    extra_binds: &[String],
 ) -> Fzf {
     let mut builder = Fzf::builder();
     builder.layout(Layout::Reverse);
@@ -69,6 +71,7 @@ fn build_fzf(
         "--select-1".to_string(),
         "--color=dark,header:bold".to_string(),
         "--pointer=▌".to_string(),
+        "--ansi".to_string(),
         "--delimiter=\t".to_string(),
         "--with-nth=2..".to_string(),
     ];
@@ -86,6 +89,9 @@ fn build_fzf(
     }
     if let Some(window) = preview_window {
         args.push(format!("--preview-window={}", window));
+    }
+    for bind in extra_binds {
+        args.push(format!("--bind={}", bind));
     }
     builder.custom_args(args);
 
@@ -168,6 +174,15 @@ impl<T: 'static> SelectBuilder<T> {
         self
     }
 
+    /// Add an extra fzf key binding (e.g. `"left:up"`).
+    ///
+    /// Can be called multiple times; each binding is passed as a separate
+    /// `--bind=` flag to fzf.
+    pub fn with_extra_bind(mut self, bind: impl Into<String>) -> Self {
+        self.extra_binds.push(bind.into());
+        self
+    }
+
     /// Execute select prompt with fuzzy search.
     ///
     /// # Returns
@@ -199,7 +214,7 @@ impl<T: 'static> SelectBuilder<T> {
         let display_options: Vec<String> = self
             .options
             .iter()
-            .map(|item| strip_ansi_codes(&item.to_string()).trim().to_string())
+            .map(|item| item.to_string().trim().to_string())
             .collect();
 
         let fzf = build_fzf(
@@ -210,6 +225,7 @@ impl<T: 'static> SelectBuilder<T> {
             self.header_lines,
             self.preview.as_deref(),
             self.preview_window.as_deref(),
+            &self.extra_binds,
         );
 
         let selected = run_with_output(fzf, indexed_items(&display_options));
@@ -236,7 +252,7 @@ fn prompt_confirm(message: &str, default: Option<bool>) -> Result<Option<bool>> 
         Some(0)
     };
 
-    let fzf = build_fzf(message, None, None, starting_cursor, 0, None, None);
+    let fzf = build_fzf(message, None, None, starting_cursor, 0, None, None, &[]);
     let selected = run_with_output(fzf, items.iter().copied());
 
     let result: Option<bool> = match selected.as_deref().map(str::trim) {
