@@ -6,14 +6,54 @@
 
 use std::process::Command;
 
-/// A tool that forge optionally or necessarily depends on at runtime.
+/// Detected host platform for install-hint selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Platform {
+    Termux,
+    Debian,
+    Macos,
+    Unknown,
+}
+
+fn detect_platform() -> Platform {
+    if std::env::var("TERMUX_VERSION").is_ok() {
+        return Platform::Termux;
+    }
+    if cfg!(target_os = "macos") {
+        return Platform::Macos;
+    }
+    // Heuristic: /etc/debian_version exists on Debian/Ubuntu derivatives
+    if std::path::Path::new("/etc/debian_version").exists() {
+        return Platform::Debian;
+    }
+    Platform::Unknown
+}
+
+/// Per-platform install commands for an external tool.
+struct InstallHint {
+    termux: &'static str,
+    debian: &'static str,
+    macos: &'static str,
+}
+
+impl InstallHint {
+    /// Returns the install command appropriate for the given platform.
+    fn for_platform(&self, platform: Platform) -> &'static str {
+        match platform {
+            Platform::Termux => self.termux,
+            Platform::Debian => self.debian,
+            Platform::Macos => self.macos,
+            Platform::Unknown => self.debian, // reasonable fallback
+        }
+    }
+}
+
+/// An external tool that forge depends on at runtime.
 struct Tool {
     name: &'static str,
     required: bool,
-    /// Short description of what breaks without this tool.
     reason: &'static str,
-    /// Suggested install command (Termux / Debian / macOS).
-    install_hint: &'static str,
+    install: InstallHint,
 }
 
 /// Returns the canonical list of external tools forge uses.
@@ -22,20 +62,32 @@ fn tools() -> Vec<Tool> {
         Tool {
             name: "fzf",
             required: true,
-            reason: "Interactive selection (model, provider, conversation)",
-            install_hint: "pkg install fzf       # Termux\n       apt install fzf       # Debian/Ubuntu\n       brew install fzf      # macOS",
+            reason: "interactive selection",
+            install: InstallHint {
+                termux: "pkg install fzf",
+                debian: "sudo apt install fzf",
+                macos: "brew install fzf",
+            },
         },
         Tool {
             name: "bat",
             required: false,
-            reason: "Syntax-highlighted file previews in completion",
-            install_hint: "pkg install bat       # Termux\n       apt install bat       # Debian/Ubuntu\n       brew install bat      # macOS",
+            reason: "syntax-highlighted file previews",
+            install: InstallHint {
+                termux: "pkg install bat",
+                debian: "sudo apt install bat",
+                macos: "brew install bat",
+            },
         },
         Tool {
             name: "git",
             required: false,
-            reason: "Sandbox worktrees, branch info, commit generation",
-            install_hint: "pkg install git       # Termux\n       apt install git       # Debian/Ubuntu\n       brew install git      # macOS",
+            reason: "sandbox worktrees & commit generation",
+            install: InstallHint {
+                termux: "pkg install git",
+                debian: "sudo apt install git",
+                macos: "brew install git",
+            },
         },
     ]
 }
@@ -48,44 +100,42 @@ fn is_available(name: &str) -> bool {
 /// Checks all external tool dependencies.
 ///
 /// - **Required** tools that are missing cause an immediate error return.
-/// - **Optional** tools that are missing produce a warning line appended to
-///   `warnings`.
+/// - **Optional** tools that are missing produce a warning per tool.
 ///
 /// # Errors
 ///
 /// Returns an error listing every missing required tool with install hints.
 pub fn check(warnings: &mut Vec<String>) -> anyhow::Result<()> {
+    let platform = detect_platform();
     let tools = tools();
+
     let missing_required: Vec<&Tool> = tools
         .iter()
-        .filter(|tool| !is_available(tool.name))
-        .filter(|tool| tool.required)
+        .filter(|tool| !is_available(tool.name) && tool.required)
         .collect();
 
     for tool in &tools {
-        if is_available(tool.name) {
+        if is_available(tool.name) || tool.required {
             continue;
         }
-        if !tool.required {
-            warnings.push(format!(
-                "⚠ Optional tool '{}' not found — {}.\n    Install: {}",
-                tool.name, tool.reason, tool.install_hint
-            ));
-        }
+        let cmd = tool.install.for_platform(platform);
+        warnings.push(format!(
+            "'{}' not found (needed for {}). Install: {}",
+            tool.name, tool.reason, cmd
+        ));
     }
 
     if missing_required.is_empty() {
         return Ok(());
     }
 
-    let mut msg = "Missing required external tools:\n".to_string();
+    let mut lines: Vec<String> = Vec::new();
+    lines.push("Missing required tools:".to_string());
     for tool in &missing_required {
-        msg.push_str(&format!(
-            "\n  ✗ {} — {}\n    Install:\n    {}\n",
-            tool.name, tool.reason, tool.install_hint
-        ));
+        let cmd = tool.install.for_platform(platform);
+        lines.push(format!("  {} — install: {}", tool.name, cmd));
     }
-    Err(anyhow::anyhow!("{}", msg))
+    Err(anyhow::anyhow!("{}", lines.join("\n")))
 }
 
 #[cfg(test)]
@@ -105,8 +155,25 @@ mod tests {
     }
 
     #[test]
-    fn test_check_collects_optional_warnings() {
-        let mut warnings = Vec::new();
-        let _ = check(&mut warnings);
+    fn test_detect_platform() {
+        // Just verify it doesn't panic and returns a valid variant.
+        let platform = detect_platform();
+        assert!(matches!(
+            platform,
+            Platform::Termux | Platform::Debian | Platform::Macos | Platform::Unknown
+        ));
+    }
+
+    #[test]
+    fn test_install_hint_for_platform() {
+        let hint = InstallHint {
+            termux: "pkg install fzf",
+            debian: "sudo apt install fzf",
+            macos: "brew install fzf",
+        };
+        assert_eq!(hint.for_platform(Platform::Termux), "pkg install fzf");
+        assert_eq!(hint.for_platform(Platform::Debian), "sudo apt install fzf");
+        assert_eq!(hint.for_platform(Platform::Macos), "brew install fzf");
+        assert_eq!(hint.for_platform(Platform::Unknown), "sudo apt install fzf");
     }
 }
