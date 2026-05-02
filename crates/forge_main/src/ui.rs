@@ -4610,6 +4610,14 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
 
     /// Initialize the state of the UI
     async fn init_state(&mut self, first: bool) -> Result<()> {
+        if first {
+            let mut dep_warnings = Vec::new();
+            crate::deps::check(&mut dep_warnings)?; // required deps — errors if missing
+            for warning in dep_warnings {
+                self.writeln_title(TitleFormat::warning(warning))?;
+            }
+        }
+
         let _ = self.handle_migrate_credentials().await;
 
         // Ensure we have a model selected before proceeding with initialization
