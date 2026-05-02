@@ -538,6 +538,11 @@ pub enum AppCommand {
         id: Option<String>,
     },
 
+    /// Branch the current conversation at a selected message.
+    /// This can be triggered with the '/branch' command.
+    #[strum(props(usage = "Branch conversation at a selected message"))]
+    Branch,
+
     /// Rename any conversation interactively.
     /// This can be triggered with the '/conversation-rename' command.
     #[strum(props(usage = "Rename a conversation interactively"))]
@@ -800,6 +805,7 @@ impl AppCommand {
             AppCommand::WorkspaceInfo => "workspace-info",
             AppCommand::WorkspaceInit => "workspace-init",
             AppCommand::SkillLoad(skill_name) => skill_name,
+            AppCommand::Branch => "branch",
         }
     }
 

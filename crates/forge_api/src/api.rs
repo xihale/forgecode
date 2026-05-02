@@ -101,6 +101,18 @@ pub trait API: Sync + Send {
         conversation_id: &ConversationId,
     ) -> Result<CompactionResult>;
 
+    /// Branches a conversation at a specific message entry.
+    ///
+    /// Creates a new conversation truncated at the specified message index.
+    /// If `with_compact` is true, the removed messages are compacted and
+    /// injected as a summary before the branch point.
+    async fn branch_conversation(
+        &self,
+        conversation_id: &ConversationId,
+        message_index: usize,
+        with_compact: bool,
+    ) -> Result<Conversation>;
+
     /// Executes a shell command using the shell tool infrastructure
     async fn execute_shell_command(
         &self,

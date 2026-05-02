@@ -192,6 +192,8 @@ function __forge_accept_line
             return
         case clone
             _forge_action_clone "$input_text"
+        case branch
+            _forge_action_branch
         case rename rn
             _forge_action_rename "$input_text"
         case conversation-rename

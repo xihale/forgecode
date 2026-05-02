@@ -1,5 +1,6 @@
 use std::fmt::Display;
 use std::ops::Deref;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use derive_more::derive::{Display, From};
 use derive_setters::Setters;
@@ -365,9 +366,58 @@ pub enum Role {
     User,
     Assistant,
 }
+/// Unique identifier for a message entry within a conversation.
+///
+/// Used for branching operations where the user selects a specific message
+/// to branch from. Generated automatically when messages are added to the
+/// context.
+#[derive(Clone, Debug, Deserialize, Display, Hash, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct EntryId(String);
+
+/// Global counter for generating deterministic entry IDs.
+static ENTRY_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+impl EntryId {
+    /// Creates a new unique entry ID using an auto-incrementing counter.
+    pub fn generate() -> Self {
+        let n = ENTRY_COUNTER.fetch_add(1, Ordering::Relaxed);
+        Self(format!("entry_{n}"))
+    }
+
+    /// Resets the entry ID counter. For use in tests only.
+    #[cfg(test)]
+    pub fn reset_counter() {
+        ENTRY_COUNTER.store(1, Ordering::Relaxed);
+    }
+
+    /// Creates an EntryId from a string.
+    pub fn new(value: impl ToString) -> Self {
+        Self(value.to_string())
+    }
+
+    /// Returns the string representation of this entry ID.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl EntryId {}
+
+impl std::str::FromStr for EntryId {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(EntryId::new(s))
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Setters, PartialEq)]
 #[setters(into, strip_option)]
 pub struct MessageEntry {
+    /// Unique identifier for this entry, used for branching.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<EntryId>,
     #[serde(flatten)]
     pub message: ContextMessage,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -376,7 +426,7 @@ pub struct MessageEntry {
 
 impl From<ContextMessage> for MessageEntry {
     fn from(value: ContextMessage) -> Self {
-        MessageEntry { message: value, usage: Default::default() }
+        MessageEntry { id: None, message: value, usage: Default::default() }
     }
 }
 
@@ -746,6 +796,33 @@ impl Context {
             None => true,
             Some(prev_model) => prev_model != current_model,
         }
+    }
+
+    /// Finds the index of the message entry with the given entry ID.
+    ///
+    /// Returns `None` if no entry with that ID exists in the context.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The entry ID to search for
+    pub fn find_entry_index(&self, id: &EntryId) -> Option<usize> {
+        self.messages
+            .iter()
+            .position(|entry| entry.id.as_ref() == Some(id))
+    }
+
+    /// Truncates the context to keep only messages up to (not including) the
+    /// given index. Returns the removed messages.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The index at which to truncate. Messages at this index and
+    ///   beyond are removed.
+    pub fn truncate_at(&mut self, index: usize) -> Vec<MessageEntry> {
+        if index >= self.messages.len() {
+            return Vec::new();
+        }
+        self.messages.split_off(index)
     }
 }
 

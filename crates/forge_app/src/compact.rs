@@ -31,7 +31,7 @@ impl Compactor {
     /// # Arguments
     ///
     /// * `context_summary` - The context summary to transform
-    fn transform(&self, context_summary: ContextSummary) -> ContextSummary {
+    pub fn transform_summary(&self, context_summary: ContextSummary) -> ContextSummary {
         SummaryTransformer::new(&self.environment.cwd).transform(context_summary)
     }
 }
@@ -53,6 +53,66 @@ impl Compactor {
             Some(sequence) => self.compress_single_sequence(context, sequence),
             None => Ok(context),
         }
+    }
+
+    /// Generates a branch summary for the given removed messages.
+    ///
+    /// When a user branches from a point in the conversation, the messages
+    /// after the branch point are removed. This method generates a summary
+    /// of those removed messages so the model knows what was previously
+    /// attempted on the abandoned branch.
+    ///
+    /// # Arguments
+    ///
+    /// * `removed` - The messages that were removed after the branch point
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if template rendering fails.
+    pub fn branch_summary(&self, removed: &[MessageEntry]) -> anyhow::Result<String> {
+        self.branch_summary_with_template(removed, "forge-branch-summary.md")
+    }
+
+    /// Generates a summary for the given removed messages using the
+    /// specified template.
+    ///
+    /// # Arguments
+    ///
+    /// * `removed` - The messages that were removed after the branch point
+    /// * `template` - The template name to render the summary with
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if template rendering fails.
+    pub fn branch_summary_with_template(
+        &self,
+        removed: &[MessageEntry],
+        template: &str,
+    ) -> anyhow::Result<String> {
+        if removed.is_empty() {
+            return Ok(String::new());
+        }
+
+        let filtered: Vec<MessageEntry> = removed
+            .iter()
+            .filter(|msg| !msg.is_droppable())
+            .cloned()
+            .collect();
+
+        if filtered.is_empty() {
+            return Ok(String::new());
+        }
+
+        let removed_context = Context::default().messages(filtered);
+        let context_summary = ContextSummary::from(&removed_context);
+        let context_summary = self.transform_summary(context_summary);
+
+        let summary = TemplateEngine::default().render(
+            template,
+            &serde_json::json!({"messages": context_summary.messages}),
+        )?;
+
+        Ok(summary)
     }
 
     /// Compress a single identified sequence of assistant messages.
@@ -92,7 +152,7 @@ impl Compactor {
         let context_summary = ContextSummary::from(&sequence_context);
 
         // Apply transformers to reduce redundant operations and clean up
-        let context_summary = self.transform(context_summary);
+        let context_summary = self.transform_summary(context_summary);
 
         info!(
             sequence_start = sequence.0,
@@ -523,7 +583,7 @@ mod tests {
         let context_summary = ContextSummary::from(&context);
 
         // Apply transformers to reduce redundant operations and clean up
-        let context_summary = compactor.transform(context_summary);
+        let context_summary = compactor.transform_summary(context_summary);
 
         let data = serde_json::json!({"messages": context_summary.messages});
 
@@ -968,5 +1028,58 @@ mod tests {
     fn create_large_content(token_count: usize) -> String {
         // 4 chars per token approximation
         "x".repeat(token_count * 4)
+    }
+
+    #[test]
+    fn test_branch_summary_empty_messages() {
+        let fixture_env = test_environment();
+        let fixture_compactor =
+            Compactor::new(Compact::default(), fixture_env);
+        let fixture_removed: Vec<MessageEntry> = vec![];
+
+        let actual = fixture_compactor.branch_summary(&fixture_removed).unwrap();
+        let expected = "";
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_branch_summary_with_messages() {
+        let fixture_env = test_environment();
+        let fixture_compactor =
+            Compactor::new(Compact::default(), fixture_env);
+        let fixture_removed = vec![
+            MessageEntry::from(ContextMessage::assistant(
+                "I tried implementing feature X",
+                None,
+                None,
+                None,
+            )),
+            MessageEntry::from(ContextMessage::user("That didn't work", None)),
+            MessageEntry::from(ContextMessage::assistant(
+                "Let me try a different approach",
+                None,
+                None,
+                None,
+            )),
+        ];
+
+        let actual = fixture_compactor
+            .branch_summary(&fixture_removed)
+            .unwrap();
+
+        // Summary should contain the messages content
+        assert!(
+            actual.contains("I tried implementing feature X"),
+            "Branch summary should contain assistant message content"
+        );
+        assert!(
+            actual.contains("That didn't work"),
+            "Branch summary should contain user message content"
+        );
+        assert!(
+            actual.contains("Let me try a different approach"),
+            "Branch summary should contain second assistant message content"
+        );
     }
 }

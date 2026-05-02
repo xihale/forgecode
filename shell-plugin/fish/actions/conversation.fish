@@ -270,3 +270,61 @@ function _forge_clone_and_switch
         _forge_log error "Failed to clone conversation: $clone_output"
     end
 end
+
+# Action handler: Branch conversation at a selected message
+function _forge_action_branch
+    echo
+
+    if test -z "$_FORGE_CONVERSATION_ID"
+        _forge_log error "No active conversation. Start a conversation first or use :conversation to select one"
+        return 0
+    end
+
+    # Get message tree for the current conversation
+    set -l tree_output
+    set tree_output ($_FORGE_BIN conversation tree "$_FORGE_CONVERSATION_ID" 2>/dev/null)
+
+    if test -z "$tree_output"
+        _forge_log error "No messages found in the current conversation"
+        return 0
+    end
+
+    # Use fzf to select a message to branch at
+    set -l prompt_text "Branch at Message ❯ "
+    set -l selected_line
+    set selected_line (echo "$tree_output" | _forge_fzf --prompt="$prompt_text" --no-multi --preview-window=hidden)
+
+    if test -z "$selected_line"
+        return 0
+    end
+
+    # Extract index from the selected line (first column)
+    set -l index (echo "$selected_line" | awk '{print $1}')
+
+    if test -z "$index"
+        _forge_log error "Could not parse message index"
+        return 0
+    end
+
+    # Execute branch command using index
+    _forge_log info "Branching conversation at message index $index"
+    set -l branch_output
+    set branch_output ($_FORGE_BIN conversation branch "$_FORGE_CONVERSATION_ID" --at-index "$index" --porcelain 2>&1)
+    set -l branch_exit_code $status
+
+    if test $branch_exit_code -eq 0
+        set -l new_id "$branch_output"
+
+        if test -n "$new_id"
+            _forge_switch_conversation "$new_id"
+            _forge_log success "Branched to new conversation $new_id"
+
+            echo
+            _forge_exec conversation show "$new_id"
+        else
+            _forge_log error "Failed to extract new conversation ID from branch output"
+        end
+    else
+        _forge_log error "Failed to branch conversation: $branch_output"
+    end
+end

@@ -46,6 +46,15 @@ impl ConversationRepositoryImpl {
 impl ConversationRepository for ConversationRepositoryImpl {
     async fn upsert_conversation(&self, conversation: Conversation) -> anyhow::Result<()> {
         self.run_with_connection(move |connection, wid| {
+            let mut conversation = conversation;
+            // Assign entry IDs to messages that don't have one yet
+            if let Some(ref mut context) = conversation.context {
+                for entry in &mut context.messages {
+                    if entry.id.is_none() {
+                        entry.id = Some(forge_domain::EntryId::generate());
+                    }
+                }
+            }
             let record = ConversationRecord::new(conversation, wid);
             diesel::insert_into(conversations::table)
                 .values(&record)
@@ -719,6 +728,7 @@ mod tests {
             })
             .into(),
             forge_domain::MessageEntry {
+                id: None,
                 message: ContextMessage::Text(forge_domain::TextMessage {
                     role: Role::Assistant,
                     content: "Assistant response".to_string(),
