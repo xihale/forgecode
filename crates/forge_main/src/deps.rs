@@ -11,6 +11,7 @@ use std::process::Command;
 enum Platform {
     Termux,
     Debian,
+    Arch,
     Macos,
     Unknown,
 }
@@ -22,7 +23,9 @@ fn detect_platform() -> Platform {
     if cfg!(target_os = "macos") {
         return Platform::Macos;
     }
-    // Heuristic: /etc/debian_version exists on Debian/Ubuntu derivatives
+    if std::path::Path::new("/etc/arch-release").exists() {
+        return Platform::Arch;
+    }
     if std::path::Path::new("/etc/debian_version").exists() {
         return Platform::Debian;
     }
@@ -33,17 +36,19 @@ fn detect_platform() -> Platform {
 struct InstallHint {
     termux: &'static str,
     debian: &'static str,
+    arch: &'static str,
     macos: &'static str,
 }
 
 impl InstallHint {
-    /// Returns the install command appropriate for the given platform.
-    fn for_platform(&self, platform: Platform) -> &'static str {
+    /// Returns the install command for the given platform, or `None` if unknown.
+    fn for_platform(&self, platform: Platform) -> Option<&'static str> {
         match platform {
-            Platform::Termux => self.termux,
-            Platform::Debian => self.debian,
-            Platform::Macos => self.macos,
-            Platform::Unknown => self.debian, // reasonable fallback
+            Platform::Termux => Some(self.termux),
+            Platform::Debian => Some(self.debian),
+            Platform::Arch => Some(self.arch),
+            Platform::Macos => Some(self.macos),
+            Platform::Unknown => None,
         }
     }
 }
@@ -66,6 +71,7 @@ fn tools() -> Vec<Tool> {
             install: InstallHint {
                 termux: "pkg install fzf",
                 debian: "sudo apt install fzf",
+                arch: "sudo pacman -S fzf",
                 macos: "brew install fzf",
             },
         },
@@ -76,6 +82,7 @@ fn tools() -> Vec<Tool> {
             install: InstallHint {
                 termux: "pkg install bat",
                 debian: "sudo apt install bat",
+                arch: "sudo pacman -S bat",
                 macos: "brew install bat",
             },
         },
@@ -86,6 +93,7 @@ fn tools() -> Vec<Tool> {
             install: InstallHint {
                 termux: "pkg install git",
                 debian: "sudo apt install git",
+                arch: "sudo pacman -S git",
                 macos: "brew install git",
             },
         },
@@ -118,10 +126,14 @@ pub fn check(warnings: &mut Vec<String>) -> anyhow::Result<()> {
         if is_available(tool.name) || tool.required {
             continue;
         }
-        let cmd = tool.install.for_platform(platform);
+        let hint = tool
+            .install
+            .for_platform(platform)
+            .map(|cmd| format!(" Install: {cmd}"))
+            .unwrap_or_default();
         warnings.push(format!(
-            "'{}' not found (needed for {}). Install: {}",
-            tool.name, tool.reason, cmd
+            "'{}' not found (needed for {}).{}",
+            tool.name, tool.reason, hint
         ));
     }
 
@@ -132,8 +144,12 @@ pub fn check(warnings: &mut Vec<String>) -> anyhow::Result<()> {
     let mut lines: Vec<String> = Vec::new();
     lines.push("Missing required tools:".to_string());
     for tool in &missing_required {
-        let cmd = tool.install.for_platform(platform);
-        lines.push(format!("  {} — install: {}", tool.name, cmd));
+        let hint = tool
+            .install
+            .for_platform(platform)
+            .map(|cmd| format!(" install: {cmd}"))
+            .unwrap_or_default();
+        lines.push(format!("  {}{hint}", tool.name));
     }
     Err(anyhow::anyhow!("{}", lines.join("\n")))
 }
@@ -160,7 +176,7 @@ mod tests {
         let platform = detect_platform();
         assert!(matches!(
             platform,
-            Platform::Termux | Platform::Debian | Platform::Macos | Platform::Unknown
+            Platform::Termux | Platform::Debian | Platform::Arch | Platform::Macos | Platform::Unknown
         ));
     }
 
@@ -169,11 +185,13 @@ mod tests {
         let hint = InstallHint {
             termux: "pkg install fzf",
             debian: "sudo apt install fzf",
+            arch: "sudo pacman -S fzf",
             macos: "brew install fzf",
         };
-        assert_eq!(hint.for_platform(Platform::Termux), "pkg install fzf");
-        assert_eq!(hint.for_platform(Platform::Debian), "sudo apt install fzf");
-        assert_eq!(hint.for_platform(Platform::Macos), "brew install fzf");
-        assert_eq!(hint.for_platform(Platform::Unknown), "sudo apt install fzf");
+        assert_eq!(hint.for_platform(Platform::Termux), Some("pkg install fzf"));
+        assert_eq!(hint.for_platform(Platform::Debian), Some("sudo apt install fzf"));
+        assert_eq!(hint.for_platform(Platform::Arch), Some("sudo pacman -S fzf"));
+        assert_eq!(hint.for_platform(Platform::Macos), Some("brew install fzf"));
+        assert_eq!(hint.for_platform(Platform::Unknown), None);
     }
 }
