@@ -8,17 +8,21 @@
 function _forge_action_commit() {
     local additional_context="$1"
     local commit_message
-    # Generate AI commit message
-    echo
     # Force color output even when not connected to TTY
     # FORCE_COLOR: for indicatif spinner colors
     # CLICOLOR_FORCE: for colored crate text colors
     
+    # Pass session environment variables so the commit command uses the
+    # shell model when one has been selected via :model.
+    local -a session_env=()
+    [[ -n "$_FORGE_SESSION_MODEL" ]] && session_env+=(FORGE_SESSION__MODEL_ID="$_FORGE_SESSION_MODEL")
+    [[ -n "$_FORGE_SESSION_PROVIDER" ]] && session_env+=(FORGE_SESSION__PROVIDER_ID="$_FORGE_SESSION_PROVIDER")
+    
     # Build commit command with optional additional context
     if [[ -n "$additional_context" ]]; then
-        commit_message=$(FORCE_COLOR=true CLICOLOR_FORCE=1 $_FORGE_BIN commit --max-diff "$_FORGE_MAX_COMMIT_DIFF" $additional_context)
+        commit_message=$(FORCE_COLOR=true CLICOLOR_FORCE=1 "${session_env[@]}" $_FORGE_BIN commit --max-diff "$_FORGE_MAX_COMMIT_DIFF" $additional_context)
     else
-        commit_message=$(FORCE_COLOR=true CLICOLOR_FORCE=1 $_FORGE_BIN commit --max-diff "$_FORGE_MAX_COMMIT_DIFF")
+        commit_message=$(FORCE_COLOR=true CLICOLOR_FORCE=1 "${session_env[@]}" $_FORGE_BIN commit --max-diff "$_FORGE_MAX_COMMIT_DIFF")
     fi
     _forge_reset
 }
@@ -29,17 +33,21 @@ function _forge_action_commit() {
 function _forge_action_commit_preview() {
     local additional_context="$1"
     local commit_message
-    # Generate AI commit message
-    echo
     # Force color output even when not connected to TTY
     # FORCE_COLOR: for indicatif spinner colors
     # CLICOLOR_FORCE: for colored crate text colors
     
+    # Pass session environment variables so the commit command uses the
+    # shell model when one has been selected via :model.
+    local -a session_env=()
+    [[ -n "$_FORGE_SESSION_MODEL" ]] && session_env+=(FORGE_SESSION__MODEL_ID="$_FORGE_SESSION_MODEL")
+    [[ -n "$_FORGE_SESSION_PROVIDER" ]] && session_env+=(FORGE_SESSION__PROVIDER_ID="$_FORGE_SESSION_PROVIDER")
+    
     # Build commit command with optional additional context
     if [[ -n "$additional_context" ]]; then
-        commit_message=$(FORCE_COLOR=true CLICOLOR_FORCE=1 $_FORGE_BIN commit --preview --max-diff "$_FORGE_MAX_COMMIT_DIFF" $additional_context)
+        commit_message=$(FORCE_COLOR=true CLICOLOR_FORCE=1 "${session_env[@]}" $_FORGE_BIN commit --preview --max-diff "$_FORGE_MAX_COMMIT_DIFF" $additional_context)
     else
-        commit_message=$(FORCE_COLOR=true CLICOLOR_FORCE=1 $_FORGE_BIN commit --preview --max-diff "$_FORGE_MAX_COMMIT_DIFF")
+        commit_message=$(FORCE_COLOR=true CLICOLOR_FORCE=1 "${session_env[@]}" $_FORGE_BIN commit --preview --max-diff "$_FORGE_MAX_COMMIT_DIFF")
     fi
     
     # Proceed only if command succeeded
