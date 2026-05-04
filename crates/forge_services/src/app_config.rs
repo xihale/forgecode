@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use forge_app::{AppConfigService, EnvironmentInfra};
+use forge_config::tier;
 use forge_domain::{ConfigOperation, Effort, ModelConfig, ModelId, ProviderId, ProviderRepository};
 use tracing::debug;
 
@@ -19,6 +20,14 @@ impl<F> ForgeAppConfigService<F> {
     }
 }
 
+/// Converts a forge_config ModelConfig to a domain ModelConfig.
+fn to_domain(mc: &forge_config::ModelConfig) -> ModelConfig {
+    ModelConfig {
+        provider: ProviderId::from(mc.provider_id.clone()),
+        model: ModelId::new(mc.model_id.clone()),
+    }
+}
+
 #[async_trait::async_trait]
 impl<F: ProviderRepository + EnvironmentInfra<Config = forge_config::ForgeConfig> + Send + Sync>
     AppConfigService for ForgeAppConfigService<F>
@@ -29,40 +38,36 @@ impl<F: ProviderRepository + EnvironmentInfra<Config = forge_config::ForgeConfig
             .infra
             .get_env_var("FORGE_SHELL_PROMPT")
             .is_some_and(|v| v == "1");
-        let source = if is_shell {
-            config.shell.as_ref().or(config.session.as_ref())
+        if is_shell {
+            config.get_tier(tier::LITE).map(to_domain)
         } else {
-            config.session.as_ref()
-        };
-        let session = source?;
-        Some(ModelConfig {
-            provider: ProviderId::from(session.provider_id.clone()),
-            model: ModelId::new(session.model_id.clone()),
-        })
+            config.get_tier(tier::NORMAL).map(to_domain)
+        }
     }
 
     async fn get_commit_config(&self) -> anyhow::Result<Option<forge_domain::ModelConfig>> {
         let config = self.infra.get_config()?;
-        Ok(config.commit.clone().map(|mc| ModelConfig {
-            provider: ProviderId::from(mc.provider_id),
-            model: ModelId::new(mc.model_id),
-        }))
+        // Tier "lite" takes priority over legacy "commit" field
+        Ok(config
+            .tiers
+            .get(tier::LITE)
+            .map(to_domain)
+            .or(config.commit.as_ref().map(to_domain)))
     }
 
     async fn get_shell_config(&self) -> anyhow::Result<Option<forge_domain::ModelConfig>> {
         let config = self.infra.get_config()?;
-        Ok(config.shell.or(config.session).map(|mc| ModelConfig {
-            provider: ProviderId::from(mc.provider_id),
-            model: ModelId::new(mc.model_id),
-        }))
+        Ok(config.get_tier(tier::LITE).map(to_domain))
     }
 
     async fn get_suggest_config(&self) -> anyhow::Result<Option<forge_domain::ModelConfig>> {
         let config = self.infra.get_config()?;
-        Ok(config.suggest.clone().map(|mc| ModelConfig {
-            provider: ProviderId::from(mc.provider_id),
-            model: ModelId::new(mc.model_id),
-        }))
+        // Tier "lite" takes priority over legacy "suggest" field
+        Ok(config
+            .tiers
+            .get(tier::LITE)
+            .map(to_domain)
+            .or(config.suggest.as_ref().map(to_domain)))
     }
 
     async fn get_reasoning_effort(&self) -> anyhow::Result<Option<Effort>> {
@@ -85,6 +90,11 @@ impl<F: ProviderRepository + EnvironmentInfra<Config = forge_config::ForgeConfig
     async fn update_config(&self, ops: Vec<ConfigOperation>) -> anyhow::Result<()> {
         debug!(ops = ?ops, "Updating app config");
         self.infra.update_environment(ops).await
+    }
+
+    async fn get_tier_config(&self, name: &str) -> Option<ModelConfig> {
+        let config = self.infra.get_config().ok()?;
+        config.get_tier(name).map(to_domain)
     }
 }
 
@@ -235,6 +245,22 @@ mod tests {
                         }
                         ConfigOperation::SetSudo(_) => {
                             // Sudo is session-scoped, not persisted to config
+                        }
+                        ConfigOperation::SetTierConfig { tier, config: tier_config } => {
+                            match tier_config {
+                                Some(mc) => {
+                                    config.tiers.insert(
+                                        tier,
+                                        ModelConfig::new(
+                                            mc.provider.as_ref().to_string(),
+                                            mc.model.to_string(),
+                                        ),
+                                    );
+                                }
+                                None => {
+                                    config.tiers.remove(&tier);
+                                }
+                            }
                         }
                     }
                 }
@@ -621,6 +647,238 @@ mod tests {
         ));
 
         assert_eq!(actual, expected);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_tier_config_returns_tier_model() -> anyhow::Result<()> {
+        let fixture = MockInfra::new();
+        let service = ForgeAppConfigService::new(Arc::new(fixture.clone()));
+
+        service
+            .update_config(vec![ConfigOperation::SetTierConfig {
+                tier: "lite".to_string(),
+                config: Some(DomainModelConfig::new(
+                    ProviderId::OPEN_ROUTER,
+                    ModelId::new("tencent/hy3-preview:free"),
+                )),
+            }])
+            .await?;
+
+        let actual = service.get_tier_config("lite").await;
+        let expected = Some(DomainModelConfig::new(
+            ProviderId::OPEN_ROUTER,
+            ModelId::new("tencent/hy3-preview:free"),
+        ));
+
+        assert_eq!(actual, expected);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_tier_config_returns_none_for_unset_tier() -> anyhow::Result<()> {
+        let fixture = MockInfra::new();
+        let service = ForgeAppConfigService::new(Arc::new(fixture));
+
+        let actual = service.get_tier_config("heavy").await;
+
+        assert_eq!(actual, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_session_config_uses_normal_tier() -> anyhow::Result<()> {
+        let fixture = MockInfra::new();
+        let service = ForgeAppConfigService::new(Arc::new(fixture.clone()));
+
+        // Set tier normal (replaces session)
+        service
+            .update_config(vec![ConfigOperation::SetTierConfig {
+                tier: "normal".to_string(),
+                config: Some(DomainModelConfig::new(
+                    ProviderId::ANTHROPIC,
+                    ModelId::new("claude-sonnet-4-20250514"),
+                )),
+            }])
+            .await?;
+
+        // Outside shell mode, should return normal tier
+        let actual = service.get_session_config().await;
+        let expected = Some(DomainModelConfig::new(
+            ProviderId::ANTHROPIC,
+            ModelId::new("claude-sonnet-4-20250514"),
+        ));
+
+        assert_eq!(actual, expected);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_session_config_in_shell_mode_uses_lite_tier() -> anyhow::Result<()> {
+        let fixture = MockInfra::new().with_env_var("FORGE_SHELL_PROMPT", "1");
+        let service = ForgeAppConfigService::new(Arc::new(fixture.clone()));
+
+        // Set both normal and lite tiers
+        service
+            .update_config(vec![
+                ConfigOperation::SetTierConfig {
+                    tier: "normal".to_string(),
+                    config: Some(DomainModelConfig::new(
+                        ProviderId::ANTHROPIC,
+                        ModelId::new("claude-sonnet-4-20250514"),
+                    )),
+                },
+                ConfigOperation::SetTierConfig {
+                    tier: "lite".to_string(),
+                    config: Some(DomainModelConfig::new(
+                        ProviderId::OPEN_ROUTER,
+                        ModelId::new("tencent/hy3-preview:free"),
+                    )),
+                },
+            ])
+            .await?;
+
+        // In shell mode, should return lite tier
+        let actual = service.get_session_config().await;
+        let expected = Some(DomainModelConfig::new(
+            ProviderId::OPEN_ROUTER,
+            ModelId::new("tencent/hy3-preview:free"),
+        ));
+
+        assert_eq!(actual, expected);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_commit_config_uses_lite_tier() -> anyhow::Result<()> {
+        let fixture = MockInfra::new();
+        let service = ForgeAppConfigService::new(Arc::new(fixture.clone()));
+
+        service
+            .update_config(vec![ConfigOperation::SetTierConfig {
+                tier: "lite".to_string(),
+                config: Some(DomainModelConfig::new(
+                    ProviderId::OPEN_ROUTER,
+                    ModelId::new("tencent/hy3-preview:free"),
+                )),
+            }])
+            .await?;
+
+        let actual = service.get_commit_config().await?;
+        let expected = Some(DomainModelConfig::new(
+            ProviderId::OPEN_ROUTER,
+            ModelId::new("tencent/hy3-preview:free"),
+        ));
+
+        assert_eq!(actual, expected);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_commit_config_falls_back_to_legacy_commit() -> anyhow::Result<()> {
+        let fixture = MockInfra::new();
+        let service = ForgeAppConfigService::new(Arc::new(fixture.clone()));
+
+        // Set legacy commit config (no tier)
+        service
+            .update_config(vec![ConfigOperation::SetCommitConfig(Some(
+                DomainModelConfig::new(ProviderId::OPENAI, ModelId::new("gpt-4")),
+            ))])
+            .await?;
+
+        let actual = service.get_commit_config().await?;
+        let expected = Some(DomainModelConfig::new(
+            ProviderId::OPENAI,
+            ModelId::new("gpt-4"),
+        ));
+
+        assert_eq!(actual, expected);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_tier_overrides_legacy_commit() -> anyhow::Result<()> {
+        let fixture = MockInfra::new();
+        let service = ForgeAppConfigService::new(Arc::new(fixture.clone()));
+
+        // Set both tier lite and legacy commit — tier should win
+        service
+            .update_config(vec![
+                ConfigOperation::SetTierConfig {
+                    tier: "lite".to_string(),
+                    config: Some(DomainModelConfig::new(
+                        ProviderId::OPEN_ROUTER,
+                        ModelId::new("tencent/hy3-preview:free"),
+                    )),
+                },
+                ConfigOperation::SetCommitConfig(Some(DomainModelConfig::new(
+                    ProviderId::OPENAI,
+                    ModelId::new("gpt-4"),
+                ))),
+            ])
+            .await?;
+
+        let actual = service.get_commit_config().await?;
+        let expected = Some(DomainModelConfig::new(
+            ProviderId::OPEN_ROUTER,
+            ModelId::new("tencent/hy3-preview:free"),
+        ));
+
+        assert_eq!(actual, expected);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_suggest_config_uses_lite_tier() -> anyhow::Result<()> {
+        let fixture = MockInfra::new();
+        let service = ForgeAppConfigService::new(Arc::new(fixture.clone()));
+
+        service
+            .update_config(vec![ConfigOperation::SetTierConfig {
+                tier: "lite".to_string(),
+                config: Some(DomainModelConfig::new(
+                    ProviderId::OPEN_ROUTER,
+                    ModelId::new("tencent/hy3-preview:free"),
+                )),
+            }])
+            .await?;
+
+        let actual = service.get_suggest_config().await?;
+        let expected = Some(DomainModelConfig::new(
+            ProviderId::OPEN_ROUTER,
+            ModelId::new("tencent/hy3-preview:free"),
+        ));
+
+        assert_eq!(actual, expected);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_clear_tier_config() -> anyhow::Result<()> {
+        let fixture = MockInfra::new();
+        let service = ForgeAppConfigService::new(Arc::new(fixture.clone()));
+
+        // Set tier
+        service
+            .update_config(vec![ConfigOperation::SetTierConfig {
+                tier: "lite".to_string(),
+                config: Some(DomainModelConfig::new(
+                    ProviderId::OPEN_ROUTER,
+                    ModelId::new("tencent/hy3-preview:free"),
+                )),
+            }])
+            .await?;
+
+        // Clear tier
+        service
+            .update_config(vec![ConfigOperation::SetTierConfig {
+                tier: "lite".to_string(),
+                config: None,
+            }])
+            .await?;
+
+        let actual = service.get_tier_config("lite").await;
+        assert_eq!(actual, None);
         Ok(())
     }
 }

@@ -4,6 +4,13 @@ use futures::Stream;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 
+/// Buffer size for the MPSC channel used to stream responses from the
+/// orchestrator to the UI. A capacity of 1 causes backpressure: every
+/// `sender.send()` blocks until the UI consumer reads the previous message,
+/// which can deadlock when the UI is slow. A small bounded buffer decouples
+/// the producer from a slow consumer without unbounded memory growth.
+const CHANNEL_CAPACITY: usize = 16;
+
 pub struct MpscStream<T> {
     join_handle: JoinHandle<()>,
     receiver: Receiver<T>,
@@ -15,7 +22,7 @@ impl<T> MpscStream<T> {
         F: (FnOnce(Sender<T>) -> S) + Send + 'static,
         S: Future<Output = ()> + Send + 'static,
     {
-        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        let (tx, rx) = tokio::sync::mpsc::channel(CHANNEL_CAPACITY);
         MpscStream { join_handle: tokio::spawn(f(tx)), receiver: rx }
     }
 }

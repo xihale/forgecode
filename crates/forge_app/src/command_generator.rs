@@ -318,6 +318,10 @@ mod tests {
             Ok(None)
         }
 
+        async fn get_tier_config(&self, _tier: &str) -> Option<forge_domain::ModelConfig> {
+            None
+        }
+
         async fn get_reasoning_effort(&self) -> Result<Option<forge_domain::Effort>> {
             Ok(None)
         }

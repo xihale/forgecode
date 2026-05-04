@@ -715,6 +715,18 @@ pub enum ConfigSetField {
         #[arg(action = clap::ArgAction::Set)]
         enabled: bool,
     },
+    /// Set the provider and model for a named tier.
+    ///
+    /// Tier names: `lite` (shell/commit/suggest), `normal` (forge), `heavy`
+    /// (muse), `sage` (sage).
+    Tier {
+        /// Tier name (lite, normal, heavy, sage).
+        tier: String,
+        /// Provider ID to use for this tier.
+        provider: ProviderId,
+        /// Model ID to use for this tier.
+        model: ModelId,
+    },
 }
 
 /// Type-safe subcommands for `forge config get`.
@@ -738,6 +750,11 @@ pub enum ConfigGetField {
     ReasoningEffort,
     /// Get whether `sudo` mode is active for shell commands.
     Sudo,
+    /// Get the model configuration for a named tier.
+    Tier {
+        /// Tier name (lite, normal, heavy, sage).
+        tier: String,
+    },
 }
 
 /// Command group for conversation management.

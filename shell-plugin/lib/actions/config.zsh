@@ -131,19 +131,22 @@ function _forge_pick_model() {
     printf '%s\n' "$output" | _forge_fzf --header-lines=1 "${fzf_args[@]}"
 }
 
-# Action handler: Select model (across all configured providers)
-# When the selected model belongs to a different provider, switches it first.
+# Action handler: Select model for the session (normal tier).
+# Persists to config via `forge config set tier normal` and sets session variables
+# so the current terminal session uses the new model immediately.
 function _forge_action_model() {
     local input_text="$1"
     (
         echo
         local current_model current_provider
-        current_model=$($_FORGE_BIN config get model 2>/dev/null)
-        # config get provider returns the display name (e.g. "OpenAI"),
-        # which corresponds to porcelain field 3 (provider display)
-        current_provider=$($_FORGE_BIN config get provider 2>/dev/null)
+        # config get tier normal outputs two lines: provider_id (raw) then model_id
+        local tier_output
+        tier_output=$(_forge_exec config get tier normal 2>/dev/null)
+        current_provider=$(echo "$tier_output" | head -n 1)
+        current_model=$(echo "$tier_output" | tail -n 1)
+
         local selected
-        selected=$(_forge_pick_model "Model ❯ " "$current_model" "$input_text" "$current_provider" 3)
+        selected=$(_forge_pick_model "Model ❯ " "$current_model" "$input_text" "$current_provider" 4)
 
         if [[ -n "$selected" ]]; then
             # Field 1 = model_id (raw), field 3 = provider display name,
@@ -157,19 +160,13 @@ function _forge_action_model() {
             provider_id=${provider_id//[[:space:]]/}
             provider_display=${provider_display//[[:space:]]/}
 
-            # Switch provider first if it differs from the current one
-            # current_provider (fetched above) is the display name, compare against that
-            if [[ -n "$provider_display" && "$provider_display" != "$current_provider" ]]; then
-                _forge_exec_interactive config set model "$provider_id" "$model_id"
-                return
-            fi
-            _forge_exec config set model "$provider_id" "$model_id"
+            _forge_exec config set tier normal "$provider_id" "$model_id"
         fi
     )
 }
 
 # Action handler: Select model for shell mode.
-# Persists to config via `forge config set shell` and sets session variables
+# Persists to config via `forge config set tier lite` and sets session variables
 # so the current terminal session uses the new model immediately.
 function _forge_action_shell_model() {
     local input_text="$1"
@@ -191,24 +188,24 @@ function _forge_action_shell_model() {
         _FORGE_SESSION_MODEL="$model_id"
         _FORGE_SESSION_PROVIDER="$provider_id"
 
-        _forge_exec config set shell "$provider_id" "$model_id"
+        _forge_exec config set tier lite "$provider_id" "$model_id"
     fi
 }
 
 # Action handler: Select model for commit message generation
-# Calls `forge config set commit <provider_id> <model_id>` on selection.
+# Calls `forge config set tier lite <provider_id> <model_id>` on selection.
 function _forge_action_commit_model() {
     local input_text="$1"
     (
         echo
-        # config get commit outputs two lines: provider_id (raw) then model_id
-        local commit_output current_commit_model current_commit_provider
-        commit_output=$(_forge_exec config get commit 2>/dev/null)
-        current_commit_provider=$(echo "$commit_output" | head -n 1)
-        current_commit_model=$(echo "$commit_output" | tail -n 1)
+        # config get tier lite outputs two lines: provider_id (raw) then model_id
+        local tier_output current_commit_model current_commit_provider
+        tier_output=$(_forge_exec config get tier lite 2>/dev/null)
+        current_commit_provider=$(echo "$tier_output" | head -n 1)
+        current_commit_model=$(echo "$tier_output" | tail -n 1)
 
         local selected
-        # provider_id from config get commit is the raw id, matching porcelain field 4
+        # provider_id from config get tier is the raw id, matching porcelain field 4
         selected=$(_forge_pick_model "Commit Model ❯ " "$current_commit_model" "$input_text" "$current_commit_provider" 4)
 
         if [[ -n "$selected" ]]; then
@@ -221,25 +218,25 @@ function _forge_action_commit_model() {
             model_id=${model_id//[[:space:]]/}
             provider_id=${provider_id//[[:space:]]/}
 
-            _forge_exec config set commit "$provider_id" "$model_id"
+            _forge_exec config set tier lite "$provider_id" "$model_id"
         fi
     )
 }
 
 # Action handler: Select model for command suggestion generation
-# Calls `forge config set suggest <provider_id> <model_id>` on selection.
+# Calls `forge config set tier lite <provider_id> <model_id>` on selection.
 function _forge_action_suggest_model() {
     local input_text="$1"
     (
         echo
-        # config get suggest outputs two lines: provider_id (raw) then model_id
-        local suggest_output current_suggest_model current_suggest_provider
-        suggest_output=$(_forge_exec config get suggest 2>/dev/null)
-        current_suggest_provider=$(echo "$suggest_output" | head -n 1)
-        current_suggest_model=$(echo "$suggest_output" | tail -n 1)
+        # config get tier lite outputs two lines: provider_id (raw) then model_id
+        local tier_output current_suggest_model current_suggest_provider
+        tier_output=$(_forge_exec config get tier lite 2>/dev/null)
+        current_suggest_provider=$(echo "$tier_output" | head -n 1)
+        current_suggest_model=$(echo "$tier_output" | tail -n 1)
 
         local selected
-        # provider_id from config get suggest is the raw id, matching porcelain field 4
+        # provider_id from config get tier is the raw id, matching porcelain field 4
         selected=$(_forge_pick_model "Suggest Model ❯ " "$current_suggest_model" "$input_text" "$current_suggest_provider" 4)
 
         if [[ -n "$selected" ]]; then
@@ -252,7 +249,7 @@ function _forge_action_suggest_model() {
             model_id=${model_id//[[:space:]]/}
             provider_id=${provider_id//[[:space:]]/}
 
-            _forge_exec config set suggest "$provider_id" "$model_id"
+            _forge_exec config set tier lite "$provider_id" "$model_id"
         fi
     )
 }
@@ -399,6 +396,59 @@ function _forge_action_config_reload() {
     _FORGE_SESSION_REASONING_EFFORT=""
 
     _forge_log success "Session overrides cleared — using global config"
+}
+
+# Action handler: Select model for a specific tier.
+# Usage: :tier [tier_name] — if tier_name is provided, opens model picker
+# for that tier. If omitted, shows a tier selector first.
+function _forge_action_tier() {
+    local input_text="$1"
+    (
+        echo
+
+        local tier_names
+        tier_names=$'TIER\nlite\nnormal\nheavy\nsage'
+
+        local tier="$input_text"
+
+        # If no tier specified, show tier picker
+        if [[ -z "$tier" ]]; then
+            local selected_tier
+            selected_tier=$(echo "$tier_names" | _forge_fzf --header-lines=1 --prompt="Tier ❯ ")
+            if [[ -z "$selected_tier" ]]; then
+                return 0
+            fi
+            tier="$selected_tier"
+        fi
+
+        # Validate tier name
+        case "$tier" in
+            lite|normal|heavy|sage) ;;
+            *)
+                _forge_log error "Unknown tier '$tier'. Available: lite, normal, heavy, sage"
+                return 0
+                ;;
+        esac
+
+        # Get current tier config
+        local tier_output current_model current_provider
+        tier_output=$(_forge_exec config get tier "$tier" 2>/dev/null)
+        current_provider=$(echo "$tier_output" | head -n 1)
+        current_model=$(echo "$tier_output" | tail -n 1)
+
+        local selected
+        selected=$(_forge_pick_model "Tier '$tier' Model ❯ " "$current_model" "" "$current_provider" 4)
+
+        if [[ -n "$selected" ]]; then
+            local model_id provider_id
+            model_id=$(echo "$selected" | awk -F '  +' '{print $1}')
+            provider_id=$(echo "$selected" | awk -F '  +' '{print $4}')
+            model_id=${model_id//[[:space:]]/}
+            provider_id=${provider_id//[[:space:]]/}
+
+            _forge_exec config set tier "$tier" "$provider_id" "$model_id"
+        fi
+    )
 }
 
 # Action handler: Select reasoning effort for the current session only.

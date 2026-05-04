@@ -5456,6 +5456,21 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                         .sub_title("sudo mode"),
                 )?;
             }
+            ConfigSetField::Tier { tier, provider, model } => {
+                let validated_model = self.validate_model(model.as_str(), Some(&provider)).await?;
+                let tier_config =
+                    forge_domain::ModelConfig::new(provider.clone(), validated_model.clone());
+                self.api
+                    .update_config(vec![ConfigOperation::SetTierConfig {
+                        tier: tier.clone(),
+                        config: Some(tier_config),
+                    }])
+                    .await?;
+                self.writeln_title(
+                    TitleFormat::action(validated_model.as_str())
+                        .sub_title(format!("is now the model for tier '{tier}'")),
+                )?;
+            }
 
         }
 
@@ -5534,6 +5549,16 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             }
             ConfigGetField::Sudo => {
                 self.writeln(self.config.sudo.to_string())?;
+            }
+            ConfigGetField::Tier { tier } => {
+                let tier_config = self.api.get_tier_config(&tier).await;
+                match tier_config {
+                    Some(config) => {
+                        self.writeln(config.provider.as_ref())?;
+                        self.writeln(config.model.as_str().to_string())?;
+                    }
+                    None => self.writeln(format!("Tier '{tier}': Not set"))?,
+                }
             }
 
         }

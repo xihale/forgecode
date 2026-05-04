@@ -13,6 +13,22 @@ use crate::{
     HttpConfig, ModelConfig, ReasoningConfig, RetryConfig, ShellBehaviorConfig, Update,
 };
 
+/// Named tier constants used for model selection.
+pub mod tier {
+    /// Fast, cheap model tier for shell prompts, commit messages, and
+    /// suggestions.
+    pub const LITE: &str = "lite";
+    /// Balanced model tier for interactive coding sessions (default).
+    pub const NORMAL: &str = "normal";
+    /// Powerful model tier for planning and complex tasks.
+    pub const HEAVY: &str = "heavy";
+    /// Reasoning model tier for deep research.
+    pub const SAGE: &str = "sage";
+
+    /// All built-in tier names in display order.
+    pub const ALL: &[&str] = &[LITE, NORMAL, HEAVY, SAGE];
+}
+
 /// Wire protocol a provider uses for chat completions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Dummy)]
 pub enum ProviderResponseType {
@@ -216,6 +232,15 @@ pub struct ForgeConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suggest: Option<ModelConfig>,
 
+    /// Named model tiers that map entry points (shell, commit, sage, muse)
+    /// to provider+model pairs. Each key is a tier name (e.g. `lite`,
+    /// `normal`, `heavy`, `sage`) and the value is a [`ModelConfig`].
+    ///
+    /// When a tier is set, it takes precedence over the legacy `session`,
+    /// `shell`, `commit`, and `suggest` fields.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub tiers: HashMap<String, ModelConfig>,
+
     // --- Workflow fields ---
     /// Configuration for automatic Forge updates.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -361,6 +386,30 @@ impl ForgeConfig {
             })
     }
 
+    /// Returns the model config for a named tier.
+    ///
+    /// Resolution order:
+    /// 1. `tiers["<name>"]` (new tier system)
+    /// 2. Legacy field fallback:
+    ///    - `lite` → `shell` → `session`
+    ///    - `normal` → `session`
+    ///    - `heavy` → `session`
+    ///    - `sage` → `session`
+    ///    - any other name → `session`
+    pub fn get_tier(&self, name: &str) -> Option<&ModelConfig> {
+        if let Some(mc) = self.tiers.get(name) {
+            return Some(mc);
+        }
+        // Legacy fallback
+        match name {
+            tier::LITE => self.shell.as_ref().or(self.session.as_ref()),
+            tier::NORMAL => self.session.as_ref(),
+            tier::HEAVY => self.session.as_ref(),
+            tier::SAGE => self.session.as_ref(),
+            _ => self.session.as_ref(),
+        }
+    }
+
     /// Reads and merges configuration from all sources, returning the resolved
 
     /// # Errors
@@ -465,5 +514,84 @@ mod tests {
         assert!(serialized.contains("show_banner = false"));
         assert!(serialized.contains("show_tips = false"));
         assert!(serialized.contains("show_hook_summary = false"));
+    }
+
+    #[test]
+    fn test_get_tier_returns_tier_config_when_set() {
+        let mut fixture = ForgeConfig::default();
+        fixture.tiers.insert(
+            "lite".to_string(),
+            ModelConfig {
+                provider_id: "open_router".to_string(),
+                model_id: "tencent/hy3-preview:free".to_string(),
+            },
+        );
+
+        let actual = fixture.get_tier("lite");
+        let expected = Some(&ModelConfig {
+            provider_id: "open_router".to_string(),
+            model_id: "tencent/hy3-preview:free".to_string(),
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_get_tier_falls_back_to_shell_for_lite() {
+        let mut fixture = ForgeConfig::default();
+        fixture.shell = Some(ModelConfig {
+            provider_id: "openai".to_string(),
+            model_id: "gpt-4".to_string(),
+        });
+
+        let actual = fixture.get_tier("lite");
+        let expected = Some(&ModelConfig {
+            provider_id: "openai".to_string(),
+            model_id: "gpt-4".to_string(),
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_get_tier_falls_back_to_session_for_normal() {
+        let mut fixture = ForgeConfig::default();
+        fixture.session = Some(ModelConfig {
+            provider_id: "anthropic".to_string(),
+            model_id: "claude-3".to_string(),
+        });
+
+        let actual = fixture.get_tier("normal");
+        let expected = Some(&ModelConfig {
+            provider_id: "anthropic".to_string(),
+            model_id: "claude-3".to_string(),
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_get_tier_prefers_tier_over_legacy() {
+        let mut fixture = ForgeConfig::default();
+        fixture.session = Some(ModelConfig {
+            provider_id: "anthropic".to_string(),
+            model_id: "claude-3".to_string(),
+        });
+        fixture.tiers.insert(
+            "normal".to_string(),
+            ModelConfig {
+                provider_id: "openai".to_string(),
+                model_id: "gpt-4".to_string(),
+            },
+        );
+
+        // Tier should take priority over session
+        let actual = fixture.get_tier("normal");
+        let expected = Some(&ModelConfig {
+            provider_id: "openai".to_string(),
+            model_id: "gpt-4".to_string(),
+        });
+
+        assert_eq!(actual, expected);
     }
 }

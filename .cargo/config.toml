@@ -6,11 +6,6 @@ rustflags = ["-C", "link-arg=-Wl,--no-as-needed", "-C", "link-arg=-Wl,--no-undef
 # Optimized configuration for Termux/mobile compilation
 # Reduces memory usage during linking
 
-[build]
-# Use more codegen units to reduce memory pressure
-# This trades some compile time and optimization for lower memory usage
-codegen-units = 256
-
 [profile.release]
 # Disable LTO for mobile environments to reduce memory usage
 # LTO is very memory intensive during linking

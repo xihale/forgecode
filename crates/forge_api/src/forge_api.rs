@@ -286,6 +286,7 @@ impl<
                 op,
                 forge_domain::ConfigOperation::SetSessionConfig(_)
                     | forge_domain::ConfigOperation::SetShellConfig(_)
+                    | forge_domain::ConfigOperation::SetTierConfig { .. }
             )
         });
         let result = self.services.update_config(ops).await;
@@ -305,6 +306,10 @@ impl<
 
     async fn get_suggest_config(&self) -> anyhow::Result<Option<ModelConfig>> {
         self.services.get_suggest_config().await
+    }
+
+    async fn get_tier_config(&self, tier: &str) -> Option<ModelConfig> {
+        self.services.get_tier_config(tier).await
     }
 
     async fn get_reasoning_effort(&self) -> anyhow::Result<Option<Effort>> {

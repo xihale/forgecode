@@ -1,7 +1,6 @@
 use std::io::IsTerminal;
 
 use anyhow::Result;
-use console::strip_ansi_codes;
 use fzf_wrapped::{Fzf, Layout, run_with_output};
 
 /// Builder for select prompts with fuzzy search.
@@ -284,6 +283,7 @@ fn prompt_confirm_as<T: 'static + Clone>(
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
+    use console::strip_ansi_codes;
 
     use super::*;
     use crate::ForgeWidget;

@@ -354,6 +354,13 @@
         }
       ]
     },
+    "tiers": {
+      "description": "Named model tiers that map entry points (shell, commit, sage, muse)\nto provider+model pairs. Each key is a tier name (e.g. `lite`,\n`normal`, `heavy`, `sage`) and the value is a [`ModelConfig`].\n\nWhen a tier is set, it takes precedence over the legacy `session`,\n`shell`, `commit`, and `suggest` fields.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/ModelConfig"
+      }
+    },
     "tool_supported": {
       "description": "Whether tool use is supported in the current environment; when false,\nall tool calls are disabled.",
       "type": "boolean",
