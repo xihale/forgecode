@@ -35,7 +35,12 @@ pub enum ConfigOperation {
     ///
     /// When enabled, every shell command is automatically prefixed with `sudo`.
     SetSudo(bool),
-
+    /// Set the model configuration for a named tier.
+    ///
+    /// The tier name (e.g. `"lite"`, `"normal"`, `"heavy"`, `"sage"`) maps to
+    /// a provider+model pair. When `None`, the tier entry is removed so that
+    /// the legacy field fallback is used instead.
+    SetTierConfig { tier: String, config: Option<ModelConfig> },
 }
 
 pub const VERSION: &str = match option_env!("APP_VERSION") {

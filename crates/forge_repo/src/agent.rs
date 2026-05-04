@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use forge_app::{AgentRepository, DirectoryReaderInfra, EnvironmentInfra, FileInfoInfra};
+use forge_config::tier;
 use forge_config::ForgeConfig;
-use forge_domain::{ModelId, ProviderId, Template, ToolName};
+use forge_domain::{AgentId, ModelId, ProviderId, Template, ToolName};
 use gray_matter::Matter;
 use gray_matter::engine::YAML;
 
@@ -188,6 +189,20 @@ fn parse_agent_file(content: &str) -> Result<AgentDefinition> {
     Ok(agent)
 }
 
+/// Returns the default tier name for an agent based on its ID.
+///
+/// - `forge` → `normal`
+/// - `muse` → `heavy`
+/// - `sage` → `sage`
+/// - any other → `normal`
+fn default_tier_for_agent(id: &AgentId) -> &'static str {
+    match id.as_str() {
+        "muse" => tier::HEAVY,
+        "sage" => tier::SAGE,
+        _ => tier::NORMAL,
+    }
+}
+
 #[async_trait::async_trait]
 impl<F: FileInfoInfra + EnvironmentInfra<Config = ForgeConfig> + DirectoryReaderInfra>
     AgentRepository for ForgeAgentRepository<F>
@@ -196,32 +211,29 @@ impl<F: FileInfoInfra + EnvironmentInfra<Config = ForgeConfig> + DirectoryReader
         let config = self.infra.get_config()?;
         let agent_defs = self.load_agents().await?;
 
-        // In shell mode (FORGE_SHELL_PROMPT=1), prefer the shell model config
-        // over the session config so that the fast shell model is used.
+        // In shell mode (FORGE_SHELL_PROMPT=1), prefer the lite tier
+        // (which falls back to shell → session) so that the fast shell model
+        // is used for all agents.
         let is_shell = self
             .infra
             .get_env_var("FORGE_SHELL_PROMPT")
             .is_some_and(|v| v == "1");
 
-        let session = if is_shell {
-            config
-                .shell
-                .clone()
-                .or_else(|| config.session.clone())
-                .ok_or(forge_domain::Error::NoDefaultSession)?
-        } else {
-            config
-                .session
-                .clone()
-                .ok_or(forge_domain::Error::NoDefaultSession)?
-        };
-
         Ok(agent_defs
             .into_iter()
             .map(|def| {
+                let tier_name = if is_shell {
+                    tier::LITE
+                } else {
+                    default_tier_for_agent(&def.id)
+                };
+                let mc = config
+                    .get_tier(tier_name)
+                    .ok_or(forge_domain::Error::NoDefaultSession)
+                    .expect("tier config should resolve");
                 def.into_agent(
-                    ProviderId::from(session.provider_id.clone()),
-                    ModelId::from(session.model_id.clone()),
+                    ProviderId::from(mc.provider_id.clone()),
+                    ModelId::from(mc.model_id.clone()),
                 )
             })
             .collect())

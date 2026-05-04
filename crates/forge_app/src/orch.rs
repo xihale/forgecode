@@ -8,7 +8,7 @@ use forge_domain::{Agent, *};
 use forge_template::Element;
 use futures::future::join_all;
 use tokio::sync::Notify;
-use tracing::warn;
+use tracing::{debug, info, warn};
 
 use crate::agent::AgentService;
 use crate::transformers::{DropReasoningOnlyMessages, ModelSpecificReasoning};
@@ -151,7 +151,18 @@ impl<S: AgentService + EnvironmentInfra<Config = forge_config::ForgeConfig>> Orc
                 // Wait for the UI to acknowledge it has rendered the tool header
                 // before we execute the tool. This prevents tool stdout from
                 // appearing before the tool name is printed.
-                notifier.notified().await;
+                let ack_result = tokio::time::timeout(
+                    Self::TOOL_ACK_TIMEOUT,
+                    notifier.notified(),
+                )
+                .await;
+                if ack_result.is_err() {
+                    warn!(
+                        tool_name = %tool_call.name,
+                        timeout_secs = Self::TOOL_ACK_TIMEOUT.as_secs(),
+                        "UI did not acknowledge tool start within timeout, proceeding anyway"
+                    );
+                }
             }
 
             // Fire the ToolcallStart lifecycle event
@@ -211,9 +222,27 @@ impl<S: AgentService + EnvironmentInfra<Config = forge_config::ForgeConfig>> Orc
         Ok(tool_call_records)
     }
 
+    /// Timeout applied when sending a message through the channel.
+    /// Prevents the orchestrator from hanging indefinitely if the UI consumer
+    /// is stalled. The channel buffer absorbs short pauses; this timeout
+    /// catches prolonged stalls.
+    const SEND_TIMEOUT: Duration = Duration::from_secs(60);
+
     async fn send(&self, message: ChatResponse) -> anyhow::Result<()> {
         if let Some(sender) = &self.sender {
-            sender.send(Ok(message)).await?
+            tokio::time::timeout(Self::SEND_TIMEOUT, sender.send(Ok(message)))
+                .await
+                .map_err(|_| {
+                    warn!(
+                        agent_id = %self.agent.id,
+                        "Send to UI channel timed out after {}s",
+                        Self::SEND_TIMEOUT.as_secs()
+                    );
+                    anyhow::anyhow!(
+                        "Send to UI channel timed out after {}s",
+                        Self::SEND_TIMEOUT.as_secs()
+                    )
+                })??;
         }
         Ok(())
     }
@@ -237,6 +266,16 @@ impl<S: AgentService + EnvironmentInfra<Config = forge_config::ForgeConfig>> Orc
 
         Ok(tool_supported)
     }
+
+    /// Timeout for a single chat turn (API call + stream consumption).
+    /// Prevents indefinite hang when the LLM provider keeps the connection
+    /// open but stops sending data. This covers the entire lifecycle from
+    /// sending the request to collecting the last stream chunk.
+    const CHAT_TURN_TIMEOUT: Duration = Duration::from_secs(600);
+
+    /// Timeout for the UI to acknowledge a tool-call start notification.
+    /// Prevents indefinite hang when the UI consumer stalls.
+    const TOOL_ACK_TIMEOUT: Duration = Duration::from_secs(30);
 
     async fn execute_chat_turn(
         &self,
@@ -281,9 +320,43 @@ impl<S: AgentService + EnvironmentInfra<Config = forge_config::ForgeConfig>> Orc
             .await
     }
 
+    /// Wraps [`execute_chat_turn`] with an overall timeout to prevent
+    /// indefinite hangs when the LLM provider stalls the SSE stream.
+    async fn execute_chat_turn_with_timeout(
+        &self,
+        model_id: &ModelId,
+        context: Context,
+        reasoning_supported: bool,
+    ) -> anyhow::Result<ChatCompletionMessageFull> {
+        tokio::time::timeout(
+            Self::CHAT_TURN_TIMEOUT,
+            self.execute_chat_turn(model_id, context, reasoning_supported),
+        )
+        .await
+        .map_err(|_| {
+            warn!(
+                agent_id = %self.agent.id,
+                model_id = %model_id,
+                timeout_secs = Self::CHAT_TURN_TIMEOUT.as_secs(),
+                "Chat turn timed out"
+            );
+            anyhow::anyhow!(
+                "Chat turn timed out after {}s for model {}",
+                Self::CHAT_TURN_TIMEOUT.as_secs(),
+                model_id
+            )
+        })?
+    }
+
     // Create a helper method with the core functionality
     pub async fn run(&mut self) -> anyhow::Result<()> {
         let model_id = self.get_model();
+
+        info!(
+            agent_id = %self.agent.id,
+            model_id = %model_id,
+            "Orchestrator run started"
+        );
 
         let mut context = self.conversation.context.clone().unwrap_or_default();
 
@@ -313,6 +386,12 @@ impl<S: AgentService + EnvironmentInfra<Config = forge_config::ForgeConfig>> Orc
                 .cached_hooks(self.cached_hooks.clone());
 
         while !should_yield {
+            debug!(
+                agent_id = %self.agent.id,
+                request_count,
+                "Starting loop iteration"
+            );
+
             // Set context for the current loop iteration
             self.conversation.context = Some(context.clone());
             self.services.update(self.conversation.clone()).await?;
@@ -326,10 +405,16 @@ impl<S: AgentService + EnvironmentInfra<Config = forge_config::ForgeConfig>> Orc
                 .handle(&request_event, &mut self.conversation)
                 .await?;
 
+            debug!(
+                agent_id = %self.agent.id,
+                request_count,
+                "Executing chat turn"
+            );
+
             let message = crate::retry::retry_with_config(
                 &self.config.clone().retry.unwrap_or_default(),
                 || {
-                    self.execute_chat_turn(
+                    self.execute_chat_turn_with_timeout(
                         &model_id,
                         context.clone(),
                         context.is_reasoning_supported(),
@@ -356,6 +441,14 @@ impl<S: AgentService + EnvironmentInfra<Config = forge_config::ForgeConfig>> Orc
             )
             .await?;
 
+            debug!(
+                agent_id = %self.agent.id,
+                request_count,
+                tool_call_count = message.tool_calls.len(),
+                finish_reason = ?message.finish_reason,
+                "Chat turn completed"
+            );
+
             // Fire the Response lifecycle event
             let response_event = LifecycleEvent::Response(EventData::new(
                 self.agent.clone(),
@@ -379,6 +472,11 @@ impl<S: AgentService + EnvironmentInfra<Config = forge_config::ForgeConfig>> Orc
                     .any(|call| ToolCatalog::should_yield(&call.name));
 
             // Process tool calls and update context
+            debug!(
+                agent_id = %self.agent.id,
+                tool_call_count = message.tool_calls.len(),
+                "Executing tool calls"
+            );
             let mut tool_call_records = self
                 .execute_tool_calls(&message.tool_calls, &tool_context)
                 .await?;
@@ -483,6 +581,13 @@ impl<S: AgentService + EnvironmentInfra<Config = forge_config::ForgeConfig>> Orc
                 }
             }
         }
+
+        info!(
+            agent_id = %self.agent.id,
+            is_complete,
+            request_count,
+            "Orchestrator run finished"
+        );
 
         self.services.update(self.conversation.clone()).await?;
 

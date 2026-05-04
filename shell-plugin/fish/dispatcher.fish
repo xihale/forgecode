@@ -171,6 +171,8 @@ function __forge_accept_line
             _forge_action_commit_model "$input_text"
         case config-suggest-model csm
             _forge_action_suggest_model "$input_text"
+        case tier
+            _forge_action_tier "$input_text"
         case tools t
             _forge_action_tools
         case config env e

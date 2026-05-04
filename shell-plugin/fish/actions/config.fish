@@ -103,16 +103,17 @@ function _forge_pick_model
     printf '%s\n' "$output" | _forge_fzf --header-lines=1 $fzf_args
 end
 
-# Action handler: Select model (across all configured providers)
+# Action handler: Select model for the session (normal tier)
 function _forge_action_model
     set -l input_text "$argv[1]"
     begin
         echo
-        set -l current_model current_provider
-        set current_model ($_FORGE_BIN config get model 2>/dev/null)
-        set current_provider ($_FORGE_BIN config get provider 2>/dev/null)
+        set -l tier_output current_model current_provider
+        set tier_output (_forge_exec config get tier normal 2>/dev/null)
+        set current_provider (echo "$tier_output" | head -n 1)
+        set current_model (echo "$tier_output" | tail -n 1)
         set -l selected
-        set selected (_forge_pick_model "Model ❯ " "$current_model" "$input_text" "$current_provider" 3)
+        set selected (_forge_pick_model "Model ❯ " "$current_model" "$input_text" "$current_provider" 4)
 
         if test -n "$selected"
             set -l model_id (echo "$selected" | awk -F '  +' '{print $1}')
@@ -120,20 +121,14 @@ function _forge_action_model
             set -l provider_id (echo "$selected" | awk -F '  +' '{print $4}')
             set model_id (string replace -a ' ' '' -- $model_id)
             set provider_id (string replace -a ' ' '' -- $provider_id)
-            set provider_display (string replace -a ' ' '' -- $provider_display)
 
-            # Switch provider first if it differs from the current one
-            if test -n "$provider_display" -a "$provider_display" != "$current_provider"
-                _forge_exec_interactive config set model "$provider_id" "$model_id"
-                return
-            end
-            _forge_exec config set model "$provider_id" "$model_id"
+            _forge_exec config set tier normal "$provider_id" "$model_id"
         end
     end
 end
 
 # Action handler: Select model for shell mode
-# Persists to config via `forge config set shell` and sets session variables
+# Persists to config via `forge config set tier lite` and sets session variables
 # so the current terminal session uses the new model immediately.
 function _forge_action_shell_model
     set -l input_text "$argv[1]"
@@ -151,7 +146,7 @@ function _forge_action_shell_model
         set -g _FORGE_SESSION_MODEL "$model_id"
         set -g _FORGE_SESSION_PROVIDER "$provider_id"
 
-        _forge_exec config set shell "$provider_id" "$model_id"
+        _forge_exec config set tier lite "$provider_id" "$model_id"
     end
 end
 
@@ -160,10 +155,10 @@ function _forge_action_commit_model
     set -l input_text "$argv[1]"
     begin
         echo
-        set -l commit_output current_commit_model current_commit_provider
-        set commit_output (_forge_exec config get commit 2>/dev/null)
-        set current_commit_provider (echo "$commit_output" | head -n 1)
-        set current_commit_model (echo "$commit_output" | tail -n 1)
+        set -l tier_output current_commit_model current_commit_provider
+        set tier_output (_forge_exec config get tier lite 2>/dev/null)
+        set current_commit_provider (echo "$tier_output" | head -n 1)
+        set current_commit_model (echo "$tier_output" | tail -n 1)
 
         set -l selected
         set selected (_forge_pick_model "Commit Model ❯ " "$current_commit_model" "$input_text" "$current_commit_provider" 4)
@@ -174,7 +169,7 @@ function _forge_action_commit_model
             set model_id (string replace -a ' ' '' -- $model_id)
             set provider_id (string replace -a ' ' '' -- $provider_id)
 
-            _forge_exec config set commit "$provider_id" "$model_id"
+            _forge_exec config set tier lite "$provider_id" "$model_id"
         end
     end
 end
@@ -184,10 +179,10 @@ function _forge_action_suggest_model
     set -l input_text "$argv[1]"
     begin
         echo
-        set -l suggest_output current_suggest_model current_suggest_provider
-        set suggest_output (_forge_exec config get suggest 2>/dev/null)
-        set current_suggest_provider (echo "$suggest_output" | head -n 1)
-        set current_suggest_model (echo "$suggest_output" | tail -n 1)
+        set -l tier_output current_suggest_model current_suggest_provider
+        set tier_output (_forge_exec config get tier lite 2>/dev/null)
+        set current_suggest_provider (echo "$tier_output" | head -n 1)
+        set current_suggest_model (echo "$tier_output" | tail -n 1)
 
         set -l selected
         set selected (_forge_pick_model "Suggest Model ❯ " "$current_suggest_model" "$input_text" "$current_suggest_provider" 4)
@@ -198,7 +193,7 @@ function _forge_action_suggest_model
             set model_id (string replace -a ' ' '' -- $model_id)
             set provider_id (string replace -a ' ' '' -- $provider_id)
 
-            _forge_exec config set suggest "$provider_id" "$model_id"
+            _forge_exec config set tier lite "$provider_id" "$model_id"
         end
     end
 end
@@ -324,6 +319,58 @@ function _forge_action_config_reload
     set -g _FORGE_SESSION_REASONING_EFFORT ""
 
     _forge_log success "Session overrides cleared — using global config"
+end
+
+# Action handler: Select model for a specific tier
+function _forge_action_tier
+    set -l input_text "$argv[1]"
+    begin
+        echo
+
+        set -l tier_names "TIER
+lite
+normal
+heavy
+sage"
+
+        set -l tier "$input_text"
+
+        # If no tier specified, show tier picker
+        if test -z "$tier"
+            set -l selected_tier (echo "$tier_names" | _forge_fzf --header-lines=1 --prompt="Tier ❯ ")
+            if test -z "$selected_tier"
+                return 0
+            end
+            set tier "$selected_tier"
+        end
+
+        # Validate tier name
+        switch "$tier"
+            case lite normal heavy sage
+                # valid
+            case '*'
+                _forge_log error "Unknown tier '$tier'. Available: lite, normal, heavy, sage"
+                return 0
+        end
+
+        # Get current tier config
+        set -l tier_output current_model current_provider
+        set tier_output (_forge_exec config get tier "$tier" 2>/dev/null)
+        set current_provider (echo "$tier_output" | head -n 1)
+        set current_model (echo "$tier_output" | tail -n 1)
+
+        set -l selected
+        set selected (_forge_pick_model "Tier '$tier' Model ❯ " "$current_model" "" "$current_provider" 4)
+
+        if test -n "$selected"
+            set -l model_id (echo "$selected" | awk -F '  +' '{print $1}')
+            set -l provider_id (echo "$selected" | awk -F '  +' '{print $4}')
+            set model_id (string replace -a ' ' '' -- $model_id)
+            set provider_id (string replace -a ' ' '' -- $provider_id)
+
+            _forge_exec config set tier "$tier" "$provider_id" "$model_id"
+        end
+    end
 end
 
 # Action handler: Select reasoning effort for the current session only

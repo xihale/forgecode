@@ -1,5 +1,7 @@
 use anyhow::Context as _;
+use std::time::Duration;
 use tokio_stream::StreamExt;
+use tracing::warn;
 
 use crate::reasoning::{Reasoning, ReasoningFull};
 use crate::{
@@ -58,6 +60,11 @@ impl ResultStreamExt<anyhow::Error> for crate::BoxStream<ChatCompletionMessage, 
         should_interrupt_for_xml: bool,
         sender: Option<ArcSender>,
     ) -> anyhow::Result<ChatCompletionMessageFull> {
+        /// Timeout for sending streaming deltas to the UI channel.
+        /// Prevents the stream consumer from blocking the LLM response
+        /// processing indefinitely when the UI is stalled.
+        const STREAM_SEND_TIMEOUT: Duration = Duration::from_secs(30);
+
         let mut messages = Vec::new();
         let mut usage: Usage = Default::default();
         let mut content = String::new();
@@ -122,11 +129,16 @@ impl ResultStreamExt<anyhow::Error> for crate::BoxStream<ChatCompletionMessage, 
                         let delta = reasoning_part.as_str();
                         if !delta.is_empty() {
                             // Ignore send errors - the receiver may have been dropped
-                            let _ = sender
-                                .send(Ok(ChatResponse::TaskReasoning {
+                            let _ = tokio::time::timeout(
+                                STREAM_SEND_TIMEOUT,
+                                sender.send(Ok(ChatResponse::TaskReasoning {
                                     content: delta.to_string(),
-                                }))
-                                .await;
+                                })),
+                            )
+                            .await
+                            .map_err(|_| {
+                                warn!("Timed out sending reasoning delta to UI channel");
+                            });
                         }
                     }
 
@@ -134,14 +146,19 @@ impl ResultStreamExt<anyhow::Error> for crate::BoxStream<ChatCompletionMessage, 
                         let delta = content_part.as_str();
                         if !delta.is_empty() {
                             // Ignore send errors - the receiver may have been dropped
-                            let _ = sender
-                                .send(Ok(ChatResponse::TaskMessage {
+                            let _ = tokio::time::timeout(
+                                STREAM_SEND_TIMEOUT,
+                                sender.send(Ok(ChatResponse::TaskMessage {
                                     content: ChatResponseContent::Markdown {
                                         text: delta.to_string(),
                                         partial: true,
                                     },
-                                }))
-                                .await;
+                                })),
+                            )
+                            .await
+                            .map_err(|_| {
+                                warn!("Timed out sending content delta to UI channel");
+                            });
                         }
                     }
                 }

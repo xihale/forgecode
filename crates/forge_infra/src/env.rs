@@ -78,6 +78,22 @@ fn apply_config_op(fc: &mut ForgeConfig, op: ConfigOperation) {
         ConfigOperation::SetSudo(enabled) => {
             fc.sudo = enabled;
         }
+        ConfigOperation::SetTierConfig { tier, config } => {
+            match config {
+                Some(mc) => {
+                    fc.tiers.insert(
+                        tier,
+                        ModelConfig {
+                            provider_id: mc.provider.as_ref().to_string(),
+                            model_id: mc.model.to_string(),
+                        },
+                    );
+                }
+                None => {
+                    fc.tiers.remove(&tier);
+                }
+            }
+        }
     }
 }
 

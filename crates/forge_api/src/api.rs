@@ -184,6 +184,9 @@ pub trait API: Sync + Send {
     /// suggestion generation).
     async fn get_suggest_config(&self) -> anyhow::Result<Option<forge_domain::ModelConfig>>;
 
+    /// Gets the model configuration for a named tier.
+    async fn get_tier_config(&self, tier: &str) -> Option<forge_domain::ModelConfig>;
+
     /// Gets the current reasoning effort setting.
     async fn get_reasoning_effort(&self) -> anyhow::Result<Option<Effort>>;
 

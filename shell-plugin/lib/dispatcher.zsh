@@ -216,6 +216,9 @@ function forge-accept-line() {
         config-suggest-model|csm)
             _forge_action_suggest_model "$input_text"
         ;;
+        tier)
+            _forge_action_tier "$input_text"
+        ;;
         tools|t)
             _forge_action_tools
         ;;

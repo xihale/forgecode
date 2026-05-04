@@ -207,6 +207,12 @@ pub trait AppConfigService: Send + Sync {
     /// all configuration changes; use [`forge_domain::ConfigOperation`]
     /// variants to describe each mutation.
     async fn update_config(&self, ops: Vec<forge_domain::ConfigOperation>) -> anyhow::Result<()>;
+
+    /// Gets the model configuration for a named tier.
+    ///
+    /// Returns `None` when no tier or legacy field is configured for the
+    /// given name.
+    async fn get_tier_config(&self, tier: &str) -> Option<forge_domain::ModelConfig>;
 }
 
 #[async_trait::async_trait]
@@ -971,6 +977,10 @@ impl<I: Services> AppConfigService for I {
 
     async fn update_config(&self, ops: Vec<forge_domain::ConfigOperation>) -> anyhow::Result<()> {
         self.config_service().update_config(ops).await
+    }
+
+    async fn get_tier_config(&self, tier: &str) -> Option<forge_domain::ModelConfig> {
+        self.config_service().get_tier_config(tier).await
     }
 }
 
