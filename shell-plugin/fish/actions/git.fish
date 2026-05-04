@@ -4,20 +4,24 @@
 function _forge_action_commit
     set -l additional_context "$argv[1]"
 
-    # Pass session environment variables so the commit command uses the
-    # shell model when one has been selected via :model.
-    set -l session_env
-    if test -n "$_FORGE_SESSION_MODEL"
-        set -a session_env FORGE_SESSION__MODEL_ID=$_FORGE_SESSION_MODEL
-    end
-    if test -n "$_FORGE_SESSION_PROVIDER"
-        set -a session_env FORGE_SESSION__PROVIDER_ID=$_FORGE_SESSION_PROVIDER
-    end
+    # Use set -lx to expose session env vars to the subcommand.
+    # This avoids the empty-argument bug that occurs when $session_env
+    # expands to "" for an empty list.
+    begin
+        set -lx FORCE_COLOR true
+        set -lx CLICOLOR_FORCE 1
+        if test -n "$_FORGE_SESSION_MODEL"
+            set -lx FORGE_SESSION__MODEL_ID "$_FORGE_SESSION_MODEL"
+        end
+        if test -n "$_FORGE_SESSION_PROVIDER"
+            set -lx FORGE_SESSION__PROVIDER_ID "$_FORGE_SESSION_PROVIDER"
+        end
 
-    if test -n "$additional_context"
-        FORCE_COLOR=true CLICOLOR_FORCE=1 $session_env $_FORGE_BIN commit --max-diff "$_FORGE_MAX_COMMIT_DIFF" $additional_context
-    else
-        FORCE_COLOR=true CLICOLOR_FORCE=1 $session_env $_FORGE_BIN commit --max-diff "$_FORGE_MAX_COMMIT_DIFF"
+        if test -n "$additional_context"
+            $_FORGE_BIN commit --max-diff "$_FORGE_MAX_COMMIT_DIFF" $additional_context
+        else
+            $_FORGE_BIN commit --max-diff "$_FORGE_MAX_COMMIT_DIFF"
+        end
     end
     _forge_reset
 end
@@ -27,20 +31,22 @@ function _forge_action_commit_preview
     set -l additional_context "$argv[1]"
     set -l commit_message
 
-    # Pass session environment variables so the commit command uses the
-    # shell model when one has been selected via :model.
-    set -l session_env
-    if test -n "$_FORGE_SESSION_MODEL"
-        set -a session_env FORGE_SESSION__MODEL_ID=$_FORGE_SESSION_MODEL
-    end
-    if test -n "$_FORGE_SESSION_PROVIDER"
-        set -a session_env FORGE_SESSION__PROVIDER_ID=$_FORGE_SESSION_PROVIDER
-    end
+    # Use set -lx to expose session env vars to the subcommand.
+    begin
+        set -lx FORCE_COLOR true
+        set -lx CLICOLOR_FORCE 1
+        if test -n "$_FORGE_SESSION_MODEL"
+            set -lx FORGE_SESSION__MODEL_ID "$_FORGE_SESSION_MODEL"
+        end
+        if test -n "$_FORGE_SESSION_PROVIDER"
+            set -lx FORGE_SESSION__PROVIDER_ID "$_FORGE_SESSION_PROVIDER"
+        end
 
-    if test -n "$additional_context"
-        set commit_message (FORCE_COLOR=true CLICOLOR_FORCE=1 $session_env $_FORGE_BIN commit --preview --max-diff "$_FORGE_MAX_COMMIT_DIFF" $additional_context)
-    else
-        set commit_message (FORCE_COLOR=true CLICOLOR_FORCE=1 $session_env $_FORGE_BIN commit --preview --max-diff "$_FORGE_MAX_COMMIT_DIFF")
+        if test -n "$additional_context"
+            set commit_message ($_FORGE_BIN commit --preview --max-diff "$_FORGE_MAX_COMMIT_DIFF" $additional_context)
+        else
+            set commit_message ($_FORGE_BIN commit --preview --max-diff "$_FORGE_MAX_COMMIT_DIFF")
+        end
     end
 
     if test -n "$commit_message"
