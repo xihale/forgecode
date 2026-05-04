@@ -4,10 +4,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use forge_app::domain::PatchOperation;
 use forge_app::{FileWriterInfra, FsPatchService, PatchOutput, compute_hash};
-use forge_domain::{
-    FuzzySearchRepository, SearchMatch, SnapshotRepository, TextPatchBlock, TextPatchRepository,
-    ValidationRepository,
-};
+use forge_domain::{SearchMatch, SnapshotRepository, ValidationRepository};
 use thiserror::Error;
 use tokio::fs;
 
@@ -149,8 +146,6 @@ enum Error {
         "Match range [{0}..{1}) is out of bounds for content of length {2}. File may have changed externally, consider reading the file again."
     )]
     RangeOutOfBounds(usize, usize, usize),
-    #[error("Failed to build fuzzy patch: {message}")]
-    PatchBuild { message: String },
 }
 
 /// Compute a range from search text, with operation-aware error handling
@@ -358,56 +353,14 @@ fn apply_replacement(
     }
 }
 
-// Using PatchOperation from forge_domain
-
-// Using FSPatchInput from forge_domain
-
-fn build_fuzzy_patch(
-    current_content: &str,
-    search_text: &str,
-    content: &str,
-    patch: TextPatchBlock,
-) -> String {
-    let _ = (
-        Range::normalize_search_line_endings(current_content, search_text),
-        Range::normalize_search_line_endings(current_content, content),
-        patch.patch,
-    );
-    patch.patched_text
-}
-
-async fn apply_replace_operation<F: TextPatchRepository>(
-    infra: &F,
+fn apply_replace_operation(
     current_content: String,
     search: &str,
     content: &str,
     operation: &PatchOperation,
 ) -> Result<String, Error> {
-    match compute_range(&current_content, Some(search), operation) {
-        Ok(range) => apply_replacement(current_content, range, operation, content),
-        Err(Error::NoMatch(search_text))
-            if matches!(
-                operation,
-                PatchOperation::Replace | PatchOperation::ReplaceAll | PatchOperation::Swap
-            ) =>
-        {
-            let normalized_search =
-                Range::normalize_search_line_endings(&current_content, &search_text);
-            let normalized_content =
-                Range::normalize_search_line_endings(&current_content, content);
-            let patch = infra
-                .build_text_patch(&current_content, &normalized_search, &normalized_content)
-                .await
-                .map_err(|error| Error::PatchBuild { message: error.to_string() })?;
-            Ok(build_fuzzy_patch(
-                &current_content,
-                &search_text,
-                content,
-                patch,
-            ))
-        }
-        Err(e) => Err(e),
-    }
+    let range = compute_range(&current_content, Some(search), operation)?;
+    apply_replacement(current_content, range, operation, content)
 }
 
 /// Service for patching files with snapshot coordination
@@ -425,13 +378,8 @@ impl<F> ForgeFsPatch<F> {
 }
 
 #[async_trait::async_trait]
-impl<
-    F: FileWriterInfra
-        + SnapshotRepository
-        + ValidationRepository
-        + FuzzySearchRepository
-        + TextPatchRepository,
-> FsPatchService for ForgeFsPatch<F>
+impl<F: FileWriterInfra + SnapshotRepository + ValidationRepository> FsPatchService
+    for ForgeFsPatch<F>
 {
     async fn patch(
         &self,
@@ -459,9 +407,7 @@ impl<
         // Save the old content before modification for diff generation
         let old_content = current_content.clone();
 
-        current_content =
-            apply_replace_operation(&*self.infra, current_content, &search, &content, &operation)
-                .await?;
+        current_content = apply_replace_operation(current_content, &search, &content, &operation)?;
 
         // SNAPSHOT COORDINATION: Always capture snapshot before modifying
         self.infra.insert_snapshot(path).await?;
@@ -514,13 +460,11 @@ impl<
             };
 
             current_content = apply_replace_operation(
-                &*self.infra,
                 current_content,
                 &edit.old_string,
                 &edit.new_string,
                 &operation,
-            )
-            .await?;
+            )?;
         }
 
         // SNAPSHOT COORDINATION: Always capture snapshot before modifying
@@ -555,6 +499,37 @@ mod tests {
     use forge_app::domain::PatchOperation;
     use forge_domain::SearchMatch;
     use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_apply_replace_operation_exact_match_success() {
+        let fixture = "hello world";
+        let actual = super::apply_replace_operation(
+            fixture.to_string(),
+            "world",
+            "universe",
+            &PatchOperation::Replace,
+        )
+        .unwrap();
+        let expected = "hello universe";
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_apply_replace_operation_no_match_returns_error() {
+        let fixture = "hello world";
+        let actual = super::apply_replace_operation(
+            fixture.to_string(),
+            "missing",
+            "replacement",
+            &PatchOperation::Replace,
+        )
+        .unwrap_err()
+        .to_string();
+        let expected = "Could not find match for search text: 'missing'. File may have changed externally, consider reading the file again.".to_string();
+
+        assert_eq!(actual, expected);
+    }
 
     #[test]
     fn test_range_from_search_match_single_line() {
