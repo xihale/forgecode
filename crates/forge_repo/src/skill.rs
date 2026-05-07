@@ -14,21 +14,24 @@ use serde::Deserialize;
 /// 1. Built-in skills (embedded in the application)
 /// 2. Global custom skills (from ~/forge/skills/ directory)
 /// 3. Agents skills (from ~/.agents/skills/ directory)
-/// 4. Project-local skills (from .forge/skills/ directory in current working
+/// 4. Workspace agents skills (from .agents/skills/ in cwd)
+/// 5. Project-local skills (from .forge/skills/ directory in current working
 ///    directory)
 ///
 /// ## Skill Precedence
 /// When skills have duplicate names across different sources, the precedence
-/// order is: **CWD (project-local) > Agents (~/.agents/skills) > Global
+/// order is: **CWD (project-local) > Workspace agents > Agents (~/.agents/skills) > Global
 /// custom > Built-in**
 ///
-/// This means project-local skills can override agents skills, which can
-/// override global skills, which can override built-in skills.
+/// This means project-local skills can override workspace agents skills, which
+/// can override home agents skills, which can override global skills, which can
+/// override built-in skills.
 ///
 /// ## Directory Resolution
 /// - **Built-in skills**: Embedded in application binary
 /// - **Global skills**: `~/forge/skills/<skill-name>/SKILL.md`
 /// - **Agents skills**: `~/.agents/skills/<skill-name>/SKILL.md`
+/// - **Workspace agents skills**: `./.agents/skills/<skill-name>/SKILL.md`
 /// - **CWD skills**: `./.forge/skills/<skill-name>/SKILL.md` (relative to
 ///   current working directory)
 ///
@@ -98,13 +101,18 @@ impl<I: FileInfoInfra + EnvironmentInfra + FileReaderInfra + WalkerInfra> SkillR
             skills.extend(agents_skills);
         }
 
+        // Load workspace agents skills (cwd/.agents/skills)
+        let workspace_agents_dir = env.workspace_agents_skills_path();
+        let workspace_agents_skills = self.load_skills_from_dir(&workspace_agents_dir).await?;
+        skills.extend(workspace_agents_skills);
+
         // Load project-local skills
         let cwd_dir = env.local_skills_path();
         let cwd_skills = self.load_skills_from_dir(&cwd_dir).await?;
         skills.extend(cwd_skills);
 
-        // Resolve conflicts by keeping the last occurrence (CWD > Agents > Global >
-        // Built-in)
+        // Resolve conflicts by keeping the last occurrence (CWD > Workspace agents
+        // > Agents > Global > Built-in)
         let skills = resolve_skill_conflicts(skills);
 
         // Render all skills with environment context
@@ -241,12 +249,14 @@ impl<I: FileInfoInfra + EnvironmentInfra + FileReaderInfra + WalkerInfra> ForgeS
             .agents_skills_path()
             .map(|p| p.display().to_string())
             .unwrap_or_default();
+        let workspace_agents = env.workspace_agents_skills_path().display().to_string();
         let local = env.local_skills_path().display().to_string();
 
         let rendered = skill
             .command
             .replace("{{global_skills_path}}", &global)
             .replace("{{agents_skills_path}}", &agents)
+            .replace("{{workspace_agents_skills_path}}", &workspace_agents)
             .replace("{{local_skills_path}}", &local);
 
         skill.command(rendered)

@@ -138,6 +138,12 @@ impl Environment {
         self.home.as_ref().map(|home| home.join(".agents/skills"))
     }
 
+    /// Returns the workspace-local agents skills directory path
+    /// (cwd/.agents/skills)
+    pub fn workspace_agents_skills_path(&self) -> PathBuf {
+        self.cwd.join(".agents/skills")
+    }
+
     /// Returns the project-local skills directory path (.forge/skills)
     pub fn local_skills_path(&self) -> PathBuf {
         self.cwd.join(".forge/skills")
@@ -282,6 +288,17 @@ mod tests {
 
         let actual = fixture.local_skills_path();
         let expected = PathBuf::from("/projects/my-app/.forge/skills");
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_workspace_agents_skills_path() {
+        let fixture: Environment = Faker.fake();
+        let fixture = fixture.cwd(PathBuf::from("/projects/my-app"));
+
+        let actual = fixture.workspace_agents_skills_path();
+        let expected = PathBuf::from("/projects/my-app/.agents/skills");
 
         assert_eq!(actual, expected);
     }
