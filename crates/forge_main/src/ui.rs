@@ -913,6 +913,10 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 crate::logs::run(args, log_dir).await?;
                 return Ok(());
             }
+            TopLevelCommand::Select(select_group) => {
+                crate::select_runner::run(select_group).await?;
+                return Ok(());
+            }
         }
         Ok(())
     }
@@ -3433,8 +3437,6 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             ForgeWidget::select("Branch at", rows)
                 .with_header_lines(1)
                 .with_starting_cursor(starting_cursor)
-                .with_extra_bind("left:half-page-up")
-                .with_extra_bind("right:half-page-down")
                 .prompt()
         })
         .await??;
