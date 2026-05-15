@@ -55,6 +55,39 @@ pub struct CommitMessageResponse {
     pub commit_message: String,
 }
 
+/// Alternative structured response that some providers return instead of the
+/// requested `CommitMessageResponse` schema. Contains separate type/scope/
+/// description fields that need to be assembled into a conventional commit
+/// message.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct AlternativeCommitMessageResponse {
+    /// The conventional commit type (e.g. feat, fix, refactor)
+    #[serde(default)]
+    pub r#type: Option<String>,
+    /// Optional scope for the commit
+    #[serde(default)]
+    pub scope: Option<String>,
+    /// The commit description in imperative mood
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+impl AlternativeCommitMessageResponse {
+    /// Assembles the fields into a conventional commit message string.
+    ///
+    /// Format: `type(scope): description` or `type: description`
+    fn to_commit_message(self) -> String {
+        let r#type = self.r#type.unwrap_or_default();
+        let scope = self.scope.filter(|s| !s.is_empty());
+        let description = self.description.unwrap_or_default();
+
+        match scope {
+            Some(scope) => format!("{type}({scope}): {description}"),
+            None => format!("{type}: {description}"),
+        }
+    }
+}
+
 /// Context for generating a commit message from a diff
 #[derive(Debug, Clone)]
 struct DiffContext {
@@ -372,8 +405,16 @@ impl<S: Services + EnvironmentInfra<Config = forge_config::ForgeConfig>> GitApp<
         let commit_message = match serde_json::from_str::<CommitMessageResponse>(&message.content) {
             Ok(response) => response.commit_message,
             Err(_) => {
-                // Fallback: Some providers don't support structured output, treat as plain text
-                message.content.trim().to_string()
+                // Fallback: try parsing as {type, scope, description} JSON that some
+                // providers return despite the requested schema
+                if let Ok(alt) =
+                    serde_json::from_str::<AlternativeCommitMessageResponse>(&message.content)
+                {
+                    alt.to_commit_message()
+                } else {
+                    // Final fallback: treat as plain text
+                    message.content.trim().to_string()
+                }
             }
         };
 
@@ -444,5 +485,51 @@ mod tests {
         let actual = build_commit_command("feat: it's done", "", true);
         let expected = "GIT_COMMITTER_NAME='ForgeCode' GIT_COMMITTER_EMAIL='noreply@forgecode.dev' git commit  -m 'feat: it'\\''s done'";
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_alternative_response_with_scope() {
+        let alt = AlternativeCommitMessageResponse {
+            r#type: Some("refactor".into()),
+            scope: Some("websocket".into()),
+            description: Some("simplify WebSocket auth flow using HttpSession".into()),
+        };
+        let actual = alt.to_commit_message();
+        let expected = "refactor(websocket): simplify WebSocket auth flow using HttpSession";
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_alternative_response_without_scope() {
+        let alt = AlternativeCommitMessageResponse {
+            r#type: Some("fix".into()),
+            scope: None,
+            description: Some("handle null response in user endpoint".into()),
+        };
+        let actual = alt.to_commit_message();
+        let expected = "fix: handle null response in user endpoint";
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_alternative_response_empty_scope() {
+        let alt = AlternativeCommitMessageResponse {
+            r#type: Some("feat".into()),
+            scope: Some(String::new()),
+            description: Some("add new feature".into()),
+        };
+        let actual = alt.to_commit_message();
+        let expected = "feat: add new feature";
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_alternative_response_deserialize_json() {
+        let json = r#"{"type":"refactor","scope":"websocket","description":"simplify auth flow"}"#;
+        let actual: AlternativeCommitMessageResponse =
+            serde_json::from_str(json).expect("should parse");
+        assert_eq!(actual.r#type.as_deref(), Some("refactor"));
+        assert_eq!(actual.scope.as_deref(), Some("websocket"));
+        assert_eq!(actual.description.as_deref(), Some("simplify auth flow"));
     }
 }
