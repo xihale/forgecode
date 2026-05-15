@@ -1,13 +1,28 @@
 mod compaction;
 mod doom_loop;
 mod external;
+mod loader;
 mod pending_todos;
 mod title_generation;
 mod tracing;
+mod trust;
 
 pub use compaction::CompactionHandler;
 pub use doom_loop::DoomLoopDetector;
 pub use external::ExternalHookInterceptor;
+pub use loader::{HookSummary, load_and_verify_hooks};
 pub use pending_todos::PendingTodosHandler;
 pub use title_generation::TitleGenerationHandler;
 pub use tracing::TracingHandler;
+pub use trust::{
+    HookTrustStatus, TrustStore, TrustedHook, compute_file_hash, discover_events, hooks_base_dir,
+    relative_hook_path, trust_store_path,
+};
+
+/// Discovers hook scripts for a given event name.
+///
+/// Scans `~/.forge/hooks/<event>.d/` for executable files, sorted
+/// alphabetically by filename.
+pub fn discover_hooks(event_name: &str) -> Vec<std::path::PathBuf> {
+    ExternalHookInterceptor::discover_hooks(event_name)
+}

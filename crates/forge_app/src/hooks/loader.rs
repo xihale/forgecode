@@ -8,7 +8,7 @@
 
 use forge_domain::CachedHook;
 
-use crate::hooks::external::discover_hooks;
+use crate::hooks::discover_hooks;
 use crate::hooks::trust::{HookTrustStatus, TrustStore, relative_hook_path};
 
 /// Summary of hook verification results, returned by `load_and_verify_hooks`

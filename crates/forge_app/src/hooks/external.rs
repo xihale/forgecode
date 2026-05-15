@@ -71,7 +71,7 @@ impl ExternalHookInterceptor {
     ///
     /// Scans `~/.forge/hooks/<event>.d/` for executable files, sorted
     /// alphabetically by filename.
-    fn discover_hooks(event_name: &str) -> Vec<PathBuf> {
+    pub(crate) fn discover_hooks(event_name: &str) -> Vec<PathBuf> {
         let Some(home) = dirs::home_dir() else {
             return Vec::new();
         };
