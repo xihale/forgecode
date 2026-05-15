@@ -152,7 +152,7 @@ impl Console {
     /// - If the set is empty, clear the effort.
     fn clamp_effort(effort: Option<Effort>, supported: &[Effort]) -> Option<Effort> {
         match effort {
-            Some(e) if supported.is_empty() => None,
+            Some(_) if supported.is_empty() => None,
             Some(e) if supported.contains(&e) => Some(e),
             Some(_) => supported.first().cloned(),
             None => None,

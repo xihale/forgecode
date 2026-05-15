@@ -9,6 +9,26 @@ use forge_config::ForgeConfig;
 use forge_domain::TitleFormat;
 use forge_main::{Cli, Sandbox, TitleDisplayExt, TopLevelCommand, UI, tracker};
 
+/// Returns `true` if the error (or any cause in its chain) is a broken pipe.
+///
+/// Broken pipes occur when output is piped to a consumer that closes early
+/// (e.g. `forge | head`). This is normal termination, not a real error.
+fn is_broken_pipe(err: &anyhow::Error) -> bool {
+    use std::io;
+
+    // Check the anyhow error chain for io::Error with BrokenPipe kind
+    let mut source: Option<&dyn std::error::Error> = Some(err.as_ref());
+    while let Some(err) = source {
+        if let Some(io_err) = err.downcast_ref::<io::Error>() {
+            if io_err.kind() == io::ErrorKind::BrokenPipe {
+                return true;
+            }
+        }
+        source = err.source();
+    }
+    false
+}
+
 /// Enables ENABLE_VIRTUAL_TERMINAL_PROCESSING on the stdout console handle.
 ///
 /// The `enable_ansi_support` crate sets VT processing on the `CONOUT$` handle,
@@ -47,6 +67,12 @@ fn enable_stdout_vt_processing() {
 #[tokio::main]
 async fn main() {
     if let Err(err) = run().await {
+        // Broken pipe is normal when piping output to a consumer that closes
+        // early (e.g. `forge | head`). Exit cleanly without printing an error
+        // message — the pipe is already gone so writing to it would fail too.
+        if is_broken_pipe(&err) {
+            std::process::exit(0);
+        }
         eprintln!("{}", TitleFormat::error(format!("{err}")).display());
         if let Some(cause) = err.chain().nth(1) {
             eprintln!("{cause}");

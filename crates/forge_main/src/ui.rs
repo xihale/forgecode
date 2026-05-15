@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -33,8 +34,7 @@ use url::Url;
 
 use crate::cli::{
     Cli, CommitCommandGroup, ConversationCommand, HookCommand, ListCommand, McpCommand,
-    SelectCommand,
-    TopLevelCommand,
+    SelectCommand, TopLevelCommand,
 };
 use crate::conversation_selector::ConversationSelector;
 use crate::display_constants::{CommandType, headers, markers, status};
@@ -410,7 +410,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         forge_prompt.effort_state(self.console.effort_state());
         forge_prompt.agent_state(self.console.agent_state());
 
-        self.console.prompt(&mut forge_prompt).await
+        self.console.prompt(&mut forge_prompt, &self.api).await
     }
 
     pub async fn run(&mut self) {
@@ -1408,10 +1408,8 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 }
             }
             HookCommand::Trust { path } => {
-                let resolved = resolve_and_validate_hook_path(
-                    &path,
-                    forge_app::hooks::trust::validate_hook_path,
-                )?;
+                let resolved =
+                    resolve_and_validate_hook_path(&path, forge_app::hooks::validate_hook_path)?;
 
                 let mut trust_store = TrustStore::load()?;
                 trust_store.trust(&resolved.relative, &resolved.full_path)?;
@@ -1426,7 +1424,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             HookCommand::Delete { path } => {
                 let resolved = resolve_and_validate_hook_path(
                     &path,
-                    forge_app::hooks::trust::validate_hook_path_for_delete,
+                    forge_app::hooks::validate_hook_path_for_delete,
                 )?;
 
                 // Remove the file if it still exists
@@ -3047,6 +3045,21 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             .map(|row| row.raw))
     }
 
+    /// Selects and sets the shell model via interactive model picker.
+    async fn on_config_shell_model(&mut self) -> anyhow::Result<()> {
+        let selection = self.select_model(None, None).await?;
+        if let Some((model, provider_id)) = selection {
+            let shell_config = forge_domain::ModelConfig::new(provider_id.clone(), model.clone());
+            self.api
+                .update_config(vec![ConfigOperation::SetShellConfig(shell_config)])
+                .await?;
+            self.writeln_title(TitleFormat::action(model.as_str()).sub_title(format!(
+                "is now the shell model for provider '{provider_id}'"
+            )))?;
+        }
+        Ok(())
+    }
+
     /// Selects and sets the commit model via interactive model picker.
     async fn on_config_commit_model(&mut self) -> anyhow::Result<()> {
         let selection = self.select_model(None, None).await?;
@@ -3428,8 +3441,6 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             ForgeWidget::select("Branch at", rows)
                 .with_header_lines(1)
                 .with_starting_cursor(starting_cursor)
-                .with_extra_bind("left:half-page-up")
-                .with_extra_bind("right:half-page-down")
                 .prompt()
         })
         .await??;
@@ -5672,8 +5683,6 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             .reasoning_effort(reasoning_effort)
             .terminal_width(terminal_width)
             .cost(cost)
-            .reasoning_effort(reasoning_effort)
-            .terminal_width(terminal_width)
             .use_nerd_font(use_nerd_font);
 
         Some(rprompt.to_string())
@@ -5734,7 +5743,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             .model(model_id)
             .token_count(conversation.and_then(|conversation| conversation.token_count()))
             .context_length(context_length)
-            .effort(effort)
+            .reasoning_effort(reasoning_effort)
             .terminal_width(terminal_width)
             .cost(cost)
             .use_nerd_font(use_nerd_font);

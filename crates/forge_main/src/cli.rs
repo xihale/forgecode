@@ -178,13 +178,58 @@ pub enum TopLevelCommand {
     Setup(SetupCommand),
 
     /// Run diagnostics on shell environment (alias for `zsh doctor`).
-    Doctor,
+    Doctor(DoctorCommand),
+
+    /// Clipboard operations for shell integration.
+    #[command(subcommand)]
+    Clipboard(ClipboardCommandGroup),
 
     /// Stream forge log output (defaults to the most recent log file).
     Logs(LogsArgs),
 
     /// Interactive fuzzy item picker.
     Select(SelectCommandGroup),
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
+pub enum ShellType {
+    Zsh,
+    Fish,
+}
+
+/// Setup shell integration by updating shell config with plugin and theme.
+#[derive(Parser, Debug, Clone)]
+pub struct SetupCommand {
+    /// Shell to configure. Auto-detected when omitted.
+    #[arg(long)]
+    pub shell: Option<ShellType>,
+
+    /// Optional setup subcommand.
+    #[command(subcommand)]
+    pub command: Option<SetupSubcommand>,
+}
+
+/// Setup subcommands.
+#[derive(Subcommand, Debug, Clone)]
+pub enum SetupSubcommand {
+    /// Remove previously installed shell integration.
+    Teardown(TeardownCommand),
+}
+
+/// Remove shell integration from shell config.
+#[derive(Parser, Debug, Clone)]
+pub struct TeardownCommand {
+    /// Shell to tear down. Auto-detected when omitted.
+    #[arg(long)]
+    pub shell: Option<ShellType>,
+}
+
+/// Run diagnostics for shell integration.
+#[derive(Parser, Debug, Clone)]
+pub struct DoctorCommand {
+    /// Shell to diagnose. Auto-detected when omitted.
+    #[arg(long)]
+    pub shell: Option<ShellType>,
 }
 
 /// Command group for the `forge select` interactive picker.

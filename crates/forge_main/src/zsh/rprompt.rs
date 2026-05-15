@@ -35,6 +35,7 @@ pub struct ZshRPrompt {
     model: Option<ModelId>,
     token_count: Option<TokenCount>,
     cost: Option<f64>,
+    context_length: Option<u64>,
     /// Currently configured reasoning effort level for the active model.
     /// Rendered to the right of the model when set.
     reasoning_effort: Option<Effort>,
@@ -71,6 +72,7 @@ impl Default for ZshRPrompt {
             model: None,
             token_count: None,
             cost: None,
+            context_length: None,
             reasoning_effort: None,
             terminal_width: None,
             use_nerd_font: true,
@@ -144,17 +146,6 @@ impl Display for ZshRPrompt {
             let cost_str = format!("{}{:.2}", self.currency_symbol, converted_cost);
             write!(f, " {}", cost_str.zsh().fg(ZshColor::GREEN).bold())?;
         }
-
-        // Add effort
-        if let Some(ref effort) = self.effort {
-            let styled = if active {
-                effort.short_name().zsh().fg(ZshColor::YELLOW).bold()
-            } else {
-                effort.short_name().zsh().fg(ZshColor::DIMMED)
-            };
-            write!(f, " [{}]", styled)?;
-        }
-
 
         // Add model (always colored — it's a static config identifier, not
         // conversation state)

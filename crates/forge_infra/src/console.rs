@@ -1,11 +1,41 @@
 //! Shared output printer for synchronized writes to stdout/stderr.
 //!
 //! Prevents interleaving when multiple threads write to terminal output.
+//!
+//! Broken pipe errors (EPIPE / `os error 32`) are silently suppressed. When
+//! output is piped to another process (e.g. `forge | head`) and the consumer
+//! closes early, further writes would fail with `BrokenPipe`. Rather than
+//! propagating this as a fatal error, we treat it as a normal termination
+//! signal and pretend the write succeeded.
 
-use std::io::{self, Stderr, Stdout, Write};
-use std::sync::{Arc, Mutex};
+use std::io::{self, ErrorKind, Stderr, Stdout, Write};
+use std::sync::Arc;
 
 use forge_domain::ConsoleWriter;
+use std::sync::Mutex;
+
+/// Returns `Ok(buf.len())` if the error is a broken pipe, otherwise `Err`.
+///
+/// When stdout is piped to a consumer that closes early (e.g. `head`, `jq`),
+/// subsequent writes return `ErrorKind::BrokenPipe`. This is expected — the
+/// consumer has finished reading — so we swallow the error and report success
+/// to callers so they don't crash or display spurious error messages.
+fn suppress_broken_pipe(res: io::Result<usize>, buf_len: usize) -> io::Result<usize> {
+    match res {
+        Ok(n) => Ok(n),
+        Err(e) if e.kind() == ErrorKind::BrokenPipe => Ok(buf_len),
+        Err(e) => Err(e),
+    }
+}
+
+/// Returns `Ok(())` if the error is a broken pipe, otherwise `Err`.
+fn suppress_broken_pipe_flush(res: io::Result<()>) -> io::Result<()> {
+    match res {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::BrokenPipe => Ok(()),
+        Err(e) => Err(e),
+    }
+}
 
 /// Thread-safe output printer that synchronizes writes to stdout/stderr.
 ///
@@ -48,22 +78,22 @@ impl<O, E> StdConsoleWriter<O, E> {
 impl<O: Write + Send, E: Write + Send> ConsoleWriter for StdConsoleWriter<O, E> {
     fn write(&self, buf: &[u8]) -> io::Result<usize> {
         let mut guard = self.stdout.lock().unwrap_or_else(|e| e.into_inner());
-        guard.write(buf)
+        suppress_broken_pipe(guard.write(buf), buf.len())
     }
 
     fn write_err(&self, buf: &[u8]) -> io::Result<usize> {
         let mut guard = self.stderr.lock().unwrap_or_else(|e| e.into_inner());
-        guard.write(buf)
+        suppress_broken_pipe(guard.write(buf), buf.len())
     }
 
     fn flush(&self) -> io::Result<()> {
         let mut guard = self.stdout.lock().unwrap_or_else(|e| e.into_inner());
-        guard.flush()
+        suppress_broken_pipe_flush(guard.flush())
     }
 
     fn flush_err(&self) -> io::Result<()> {
         let mut guard = self.stderr.lock().unwrap_or_else(|e| e.into_inner());
-        guard.flush()
+        suppress_broken_pipe_flush(guard.flush())
     }
 }
 
@@ -132,5 +162,52 @@ mod tests {
 
         assert_eq!(stdout_content, b"hello");
         assert_eq!(stderr_content, b"error");
+    }
+
+    /// A writer that always returns `BrokenPipe` to simulate a closed consumer.
+    #[derive(Debug)]
+    struct BrokenPipeWriter;
+
+    impl Write for BrokenPipeWriter {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(ErrorKind::BrokenPipe, "Broken pipe (os error 32)"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Err(io::Error::new(ErrorKind::BrokenPipe, "Broken pipe (os error 32)"))
+        }
+    }
+
+    #[test]
+    fn test_broken_pipe_is_suppressed_on_write() {
+        let printer = StdConsoleWriter::with_writers(BrokenPipeWriter, BrokenPipeWriter);
+
+        // Write should succeed despite underlying writer returning BrokenPipe
+        let actual = printer.write(b"hello").unwrap();
+        let expected = 5;
+        assert_eq!(actual, expected);
+
+        let actual = printer.write_err(b"error").unwrap();
+        let expected = 5;
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_broken_pipe_is_suppressed_on_flush() {
+        let printer = StdConsoleWriter::with_writers(BrokenPipeWriter, BrokenPipeWriter);
+
+        // Flush should succeed despite underlying writer returning BrokenPipe
+        printer.flush().unwrap();
+        printer.flush_err().unwrap();
+    }
+
+    #[test]
+    fn test_non_broken_pipe_errors_propagate() {
+        // Other error kinds should still propagate — test via suppress_broken_pipe directly
+        let res: io::Result<usize> = Err(io::Error::new(ErrorKind::PermissionDenied, "denied"));
+        let actual = suppress_broken_pipe(res, 5);
+        assert!(actual.is_err());
+        let err = actual.unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::PermissionDenied);
     }
 }

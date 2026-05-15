@@ -165,8 +165,7 @@ impl<
         // cached_hooks contains hook script content read into memory at init()
         // time. Scripts are executed from anonymous in-memory file descriptors
         // — zero disk I/O, zero TOCTOU risk.
-        let cached_hooks = self.cached_hooks.clone();
-        self.app().chat(agent_id, chat, cached_hooks).await
+        self.app().chat(agent_id, chat).await
     }
 
     async fn upsert_conversation(&self, conversation: Conversation) -> anyhow::Result<()> {
