@@ -146,6 +146,7 @@ impl Model {
             tools_supported: None,
             supports_parallel_tool_calls: None,
             supports_reasoning: None,
+            supported_reasoning_efforts: None,
             input_modalities: default_input_modalities(),
         }
     }
