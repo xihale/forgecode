@@ -16,7 +16,6 @@ pub enum UpdateFrequency {
     Never,
     #[default]
     Always,
-    Never,
 }
 
 impl From<UpdateFrequency> for Duration {
@@ -26,7 +25,6 @@ impl From<UpdateFrequency> for Duration {
             UpdateFrequency::Weekly => Duration::from_secs(60 * 60 * 24 * 7),
             UpdateFrequency::Never => Duration::MAX,
             UpdateFrequency::Always => Duration::ZERO,
-            UpdateFrequency::Never => Duration::from_secs(u64::MAX),
         }
     }
 }
