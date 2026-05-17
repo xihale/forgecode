@@ -241,7 +241,7 @@ impl<S: Services + EnvironmentInfra<Config = forge_config::ForgeConfig>> ForgeAp
         // which makes a manual compaction appear to grow from "last request
         // tokens" to "current context tokens".
         let original_messages = context.messages.len();
-        let original_token_count = context.token_count_approx();
+        let original_token_count = *context.token_count();
 
         let forge_config = self.services.get_config()?;
 
@@ -268,7 +268,7 @@ impl<S: Services + EnvironmentInfra<Config = forge_config::ForgeConfig>> ForgeAp
         let compacted_context = Compactor::new(compact, environment).compact(context, true)?;
 
         let compacted_messages = compacted_context.messages.len();
-        let compacted_tokens = compacted_context.token_count_approx();
+        let compacted_tokens = *compacted_context.token_count();
 
         // Update the conversation with the compacted context
         conversation.context = Some(compacted_context);

@@ -216,8 +216,13 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         Ok(rows)
     }
 
+    /// Default context window size used when model metadata does not provide
+    /// `context_length`. Matches the value used by `Agent::compaction_threshold`.
+    const DEFAULT_CONTEXT_WINDOW: u64 = 128_000;
+
     /// Resolves the context length for the given model ID by looking up the
-    /// model list. Falls back to the cached value when the API call fails.
+    /// model list. Falls back to the cached value when the API call fails, and
+    /// to a default context window when no metadata is available at all.
     async fn get_context_length(&self, model_id: Option<&ModelId>) -> Option<u64> {
         let mid = model_id?;
         let fresh = self.api.get_models().await.ok().and_then(|models| {
@@ -227,7 +232,9 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                 .and_then(|m| m.context_length)
         });
         // Return the fresh value if available, otherwise fall back to the cache
-        fresh.or(self.cached_context_length)
+        let resolved = fresh.or(self.cached_context_length);
+        // Fall back to the default context window when no metadata is available
+        Some(resolved.unwrap_or(Self::DEFAULT_CONTEXT_WINDOW))
     }
 
     /// Resolves model and context length in a single call.
@@ -397,6 +404,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         if let Some(u) = usage {
             forge_prompt.usage(u);
         }
+        let context_length = self.get_context_length(model.as_ref()).await;
         if let Some(m) = model {
             forge_prompt.model(m);
         }
@@ -405,6 +413,10 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         }
         if let Ok(Some(effort)) = self.api.get_reasoning_effort().await {
             forge_prompt.effort(effort);
+        }
+
+        if let Some(cl) = context_length {
+            forge_prompt.context_length(cl);
         }
 
         forge_prompt.effort_state(self.console.effort_state());

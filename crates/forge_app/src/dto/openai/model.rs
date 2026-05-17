@@ -120,7 +120,9 @@ impl From<Model> for forge_domain::Model {
             id: value.id,
             name: value.name,
             description: value.description,
-            context_length: value.context_length,
+            context_length: value
+                .context_length
+                .or(value.top_provider.as_ref().and_then(|tp| tp.context_length)),
             tools_supported,
             supports_parallel_tool_calls,
             supports_reasoning,
