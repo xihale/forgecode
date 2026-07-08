@@ -71,7 +71,7 @@ impl Transformer for ProviderPipeline<'_> {
             provider.id == ProviderId::REQUESTY
                 || provider.id == ProviderId::GITHUB_COPILOT
                 || is_deepseek_compatible(provider, request)
-                || is_mimo_compatible(provider, request)
+                || is_xiaomi_mimo_provider(provider)
                 || provider.id == ProviderId::NVIDIA
         });
 
@@ -82,12 +82,12 @@ impl Transformer for ProviderPipeline<'_> {
             provider.id == ProviderId::FIREWORKS_AI
                 || provider.id == ProviderId::FIREWORKS_AI_FIREPASS
                 || is_deepseek_compatible(provider, request)
-                || is_mimo_compatible(provider, request)
                 || when_model("kimi")(request)
+                || is_xiaomi_mimo_provider(provider)
         });
 
         let default_reasoning_content = DefaultReasoningContent.when(move |request: &Request| {
-            is_deepseek_compatible(provider, request) || is_mimo_compatible(provider, request)
+            is_deepseek_compatible(provider, request) || is_xiaomi_mimo_provider(provider)
         });
 
         let cerebras_compat = MakeCerebrasCompat.when(move |_| provider.id == ProviderId::CEREBRAS);
@@ -161,11 +161,9 @@ fn is_deepseek_compatible(provider: &Provider<Url>, request: &Request) -> bool {
     false
 }
 
-/// Checks if a request should use Mimo-style reasoning replay.
-///
-/// This matches:
-/// - Direct Xiaomi Mimo provider (any model)
-fn is_mimo_compatible(provider: &Provider<Url>, _request: &Request) -> bool {
+/// Checks if provider is Xiaomi MiMo, which requires reasoning to be replayed
+/// as a flat reasoning_content field in follow-up requests.
+fn is_xiaomi_mimo_provider(provider: &Provider<Url>) -> bool {
     provider.id == ProviderId::XIAOMI_MIMO
 }
 
@@ -395,20 +393,6 @@ mod tests {
         }
     }
 
-    fn opencode_go(key: &str) -> Provider<Url> {
-        Provider {
-            id: ProviderId::OPENCODE_GO,
-            provider_type: Default::default(),
-            response: Some(ProviderResponse::OpenCode),
-            url: Url::parse("https://opencode.ai/zen/go").unwrap(),
-            auth_methods: vec![forge_domain::AuthMethod::ApiKey],
-            url_params: vec![],
-            credential: make_credential(ProviderId::OPENCODE_GO, key),
-            custom_headers: None,
-            models: Some(ModelSource::Hardcoded(vec![])),
-        }
-    }
-
     fn xiaomi_mimo(key: &str) -> Provider<Url> {
         Provider {
             id: ProviderId::XIAOMI_MIMO,
@@ -418,6 +402,22 @@ mod tests {
             auth_methods: vec![forge_domain::AuthMethod::ApiKey],
             url_params: vec![],
             credential: make_credential(ProviderId::XIAOMI_MIMO, key),
+            custom_headers: None,
+            models: Some(ModelSource::Url(
+                Url::parse("https://token-plan-sgp.xiaomimimo.com/v1/models").unwrap(),
+            )),
+        }
+    }
+
+    fn opencode_go(key: &str) -> Provider<Url> {
+        Provider {
+            id: ProviderId::OPENCODE_GO,
+            provider_type: Default::default(),
+            response: Some(ProviderResponse::OpenCode),
+            url: Url::parse("https://opencode.ai/zen/go").unwrap(),
+            auth_methods: vec![forge_domain::AuthMethod::ApiKey],
+            url_params: vec![],
+            credential: make_credential(ProviderId::OPENCODE_GO, key),
             custom_headers: None,
             models: Some(ModelSource::Hardcoded(vec![])),
         }
@@ -1263,7 +1263,7 @@ mod tests {
             extra_content: None,
         }]);
 
-        let mut pipeline = ProviderPipeline::new(&provider);
+        let mut pipeline = ProviderPipeline::new(&provider, false);
         let actual = pipeline.transform(fixture);
 
         let message = actual.messages.unwrap().into_iter().next().unwrap();
@@ -1287,7 +1287,7 @@ mod tests {
             extra_content: None,
         }]);
 
-        let mut pipeline = ProviderPipeline::new(&provider);
+        let mut pipeline = ProviderPipeline::new(&provider, false);
         let actual = pipeline.transform(fixture);
 
         let message = actual.messages.unwrap().into_iter().next().unwrap();
@@ -1306,7 +1306,7 @@ mod tests {
                 exclude: None,
             });
 
-        let mut pipeline = ProviderPipeline::new(&provider);
+        let mut pipeline = ProviderPipeline::new(&provider, false);
         let actual = pipeline.transform(fixture);
 
         assert_eq!(actual.reasoning_effort, Some("high".to_string()));

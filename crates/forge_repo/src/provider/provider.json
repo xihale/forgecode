@@ -86,7 +86,10 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text", "image"]
+        "input_modalities": [
+          "text",
+          "image"
+        ]
       },
       {
         "id": "gpt-5.2-codex",
@@ -96,7 +99,10 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text", "image"]
+        "input_modalities": [
+          "text",
+          "image"
+        ]
       },
       {
         "id": "gpt-5.1-codex",
@@ -106,10 +112,15 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text", "image"]
+        "input_modalities": [
+          "text",
+          "image"
+        ]
       }
     ],
-    "auth_methods": ["api_key"]
+    "auth_methods": [
+      "api_key"
+    ]
   },
   {
     "id": "xai",
@@ -808,7 +819,10 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text", "image"]
+        "input_modalities": [
+          "text",
+          "image"
+        ]
       },
       {
         "id": "gpt-5.5-2026-04-23",
@@ -824,7 +838,10 @@
           "high",
           "xhigh"
         ],
-        "input_modalities": ["text", "image"]
+        "input_modalities": [
+          "text",
+          "image"
+        ]
       },
       {
         "id": "gpt-5.5-pro-2026-04-23",
@@ -840,7 +857,10 @@
           "high",
           "xhigh"
         ],
-        "input_modalities": ["text", "image"]
+        "input_modalities": [
+          "text",
+          "image"
+        ]
       }
     ],
     "auth_methods": [
@@ -1485,7 +1505,9 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": false,
         "supports_reasoning": false,
-        "input_modalities": ["text"]
+        "input_modalities": [
+          "text"
+        ]
       },
       {
         "id": "glm-5v-turbo",
@@ -1495,7 +1517,10 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text", "image"]
+        "input_modalities": [
+          "text",
+          "image"
+        ]
       }
     ],
     "auth_methods": [
@@ -1710,66 +1735,109 @@
     "id": "llama_cpp",
     "api_key_vars": "LLAMA_CPP_API_KEY",
     "url_param_vars": [
-      {"name": "LLAMA_CPP_SSL_SCHEME", "options": ["http", "https"]},
+      {
+        "name": "LLAMA_CPP_SSL_SCHEME",
+        "options": [
+          "http",
+          "https"
+        ]
+      },
       "LLAMA_CPP_HOST",
       "LLAMA_CPP_PORT"
     ],
     "response_type": "OpenAI",
     "url": "{{LLAMA_CPP_SSL_SCHEME}}://{{LLAMA_CPP_HOST}}:{{LLAMA_CPP_PORT}}/v1/chat/completions",
     "models": "{{LLAMA_CPP_SSL_SCHEME}}://{{LLAMA_CPP_HOST}}:{{LLAMA_CPP_PORT}}/v1/models",
-    "auth_methods": ["api_key"]
+    "auth_methods": [
+      "api_key"
+    ]
   },
   {
     "id": "vllm",
     "api_key_vars": "VLLM_API_KEY",
     "url_param_vars": [
-      {"name": "VLLM_SSL_SCHEME", "options": ["http", "https"]},
+      {
+        "name": "VLLM_SSL_SCHEME",
+        "options": [
+          "http",
+          "https"
+        ]
+      },
       "VLLM_HOST",
-      {"name": "VLLM_PORT", "optional": true}
+      {
+        "name": "VLLM_PORT",
+        "optional": true
+      }
     ],
     "response_type": "OpenAI",
     "url": "{{VLLM_SSL_SCHEME}}://{{VLLM_HOST}}{{#if VLLM_PORT}}:{{VLLM_PORT}}{{/if}}/v1/chat/completions",
     "models": "{{VLLM_SSL_SCHEME}}://{{VLLM_HOST}}{{#if VLLM_PORT}}:{{VLLM_PORT}}{{/if}}/v1/models",
-    "auth_methods": ["api_key"]
+    "auth_methods": [
+      "api_key"
+    ]
   },
   {
     "id": "jan_ai",
     "api_key_vars": "JAN_AI_API_KEY",
     "url_param_vars": [
-      {"name": "JAN_AI_SSL_SCHEME", "options": ["http", "https"]},
+      {
+        "name": "JAN_AI_SSL_SCHEME",
+        "options": [
+          "http",
+          "https"
+        ]
+      },
       "JAN_AI_HOST",
       "JAN_AI_PORT"
     ],
     "response_type": "OpenAI",
     "url": "{{JAN_AI_SSL_SCHEME}}://{{JAN_AI_HOST}}:{{JAN_AI_PORT}}/v1/chat/completions",
     "models": "{{JAN_AI_SSL_SCHEME}}://{{JAN_AI_HOST}}:{{JAN_AI_PORT}}/v1/models",
-    "auth_methods": ["api_key"]
+    "auth_methods": [
+      "api_key"
+    ]
   },
   {
     "id": "ollama",
     "api_key_vars": "OLLAMA_API_KEY",
     "url_param_vars": [
-      {"name": "OLLAMA_SSL_SCHEME", "options": ["http", "https"]},
+      {
+        "name": "OLLAMA_SSL_SCHEME",
+        "options": [
+          "http",
+          "https"
+        ]
+      },
       "OLLAMA_HOST",
       "OLLAMA_PORT"
     ],
     "response_type": "OpenAI",
     "url": "{{OLLAMA_SSL_SCHEME}}://{{OLLAMA_HOST}}:{{OLLAMA_PORT}}/v1/chat/completions",
     "models": "{{OLLAMA_SSL_SCHEME}}://{{OLLAMA_HOST}}:{{OLLAMA_PORT}}/v1/models",
-    "auth_methods": ["api_key"]
+    "auth_methods": [
+      "api_key"
+    ]
   },
   {
     "id": "lm_studio",
     "api_key_vars": "LM_STUDIO_API_KEY",
     "url_param_vars": [
-      {"name": "LM_STUDIO_SSL_SCHEME", "options": ["http", "https"]},
+      {
+        "name": "LM_STUDIO_SSL_SCHEME",
+        "options": [
+          "http",
+          "https"
+        ]
+      },
       "LM_STUDIO_HOST",
       "LM_STUDIO_PORT"
     ],
     "response_type": "OpenAIResponses",
     "url": "{{LM_STUDIO_SSL_SCHEME}}://{{LM_STUDIO_HOST}}:{{LM_STUDIO_PORT}}/v1/responses",
     "models": "{{LM_STUDIO_SSL_SCHEME}}://{{LM_STUDIO_HOST}}:{{LM_STUDIO_PORT}}/v1/models",
-    "auth_methods": ["api_key"]
+    "auth_methods": [
+      "api_key"
+    ]
   },
   {
     "id": "forge_services",
@@ -3073,7 +3141,10 @@
         ]
       }
     ],
-    "auth_methods": ["api_key", "aws_profile"]
+    "auth_methods": [
+      "api_key",
+      "aws_profile"
+    ]
   },
   {
     "id": "vertex_ai_anthropic",
@@ -3607,7 +3678,10 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text", "image"]
+        "input_modalities": [
+          "text",
+          "image"
+        ]
       },
       {
         "id": "gpt-5.4-mini",
@@ -3848,7 +3922,9 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text"]
+        "input_modalities": [
+          "text"
+        ]
       },
       {
         "id": "mimo-v2.5",
@@ -3858,7 +3934,10 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text", "image"]
+        "input_modalities": [
+          "text",
+          "image"
+        ]
       },
       {
         "id": "deepseek-v4-flash",
@@ -3868,7 +3947,9 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text"]
+        "input_modalities": [
+          "text"
+        ]
       },
       {
         "id": "deepseek-v4-pro",
@@ -3878,7 +3959,9 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text"]
+        "input_modalities": [
+          "text"
+        ]
       },
       {
         "id": "glm-5",
@@ -3972,7 +4055,9 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text"]
+        "input_modalities": [
+          "text"
+        ]
       },
       {
         "id": "qwen3.6-plus",
@@ -3982,7 +4067,10 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text", "image"]
+        "input_modalities": [
+          "text",
+          "image"
+        ]
       },
       {
         "id": "kimi-k2.6",
@@ -3992,10 +4080,12 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text", "image"]
+        "input_modalities": [
+          "text",
+          "image"
+        ]
       }
     ],
-
     "auth_methods": [
       "api_key"
     ]
@@ -4031,7 +4121,7 @@
       {
         "id": "kimi-k2.5",
         "name": "Kimi K2.5",
-        "description": "Kimi K2.5 is an updated iteration of Moonshot AI's Kimi K2 — a 1-trillion-parameter Mixture-of-Experts model (32B active parameters) trained with the MuonClip optimizer on 15.5T tokens. Delivers frontier performance in agentic tasks, tool use, coding (SWE-bench 65.8%), math, and reasoning. Supports multimodal input (text and image).",
+        "description": "Kimi K2.5 is an updated iteration of Moonshot AI's Kimi K2 \u2014 a 1-trillion-parameter Mixture-of-Experts model (32B active parameters) trained with the MuonClip optimizer on 15.5T tokens. Delivers frontier performance in agentic tasks, tool use, coding (SWE-bench 65.8%), math, and reasoning. Supports multimodal input (text and image).",
         "context_length": 262000,
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
@@ -4073,7 +4163,7 @@
       {
         "id": "qwen3-max-2026-01-23",
         "name": "Qwen 3 Max",
-        "description": "Qwen3 Max (snapshot 2026-01-23) is Alibaba's flagship Qwen3 API model. Features hybrid thinking modes — extended chain-of-thought reasoning and instant non-thinking responses — with strong benchmark results in coding, math, and general tasks comparable to DeepSeek-R1, o1, and Gemini 2.5 Pro. Pre-trained on ~36T tokens across 119 languages.",
+        "description": "Qwen3 Max (snapshot 2026-01-23) is Alibaba's flagship Qwen3 API model. Features hybrid thinking modes \u2014 extended chain-of-thought reasoning and instant non-thinking responses \u2014 with strong benchmark results in coding, math, and general tasks comparable to DeepSeek-R1, o1, and Gemini 2.5 Pro. Pre-trained on ~36T tokens across 119 languages.",
         "context_length": 262000,
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
@@ -4409,7 +4499,9 @@
     "url_param_vars": [],
     "response_type": "OpenAI",
     "url": "https://api.fireworks.ai/inference/v1/chat/completions",
-    "auth_methods": ["api_key"],
+    "auth_methods": [
+      "api_key"
+    ],
     "models": [
       {
         "id": "accounts/fireworks/routers/kimi-k2p6-turbo",
@@ -4419,7 +4511,10 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text", "image"]
+        "input_modalities": [
+          "text",
+          "image"
+        ]
       }
     ]
   },
@@ -4443,7 +4538,9 @@
         ]
       }
     ],
-    "auth_methods": ["api_key"]
+    "auth_methods": [
+      "api_key"
+    ]
   },
   {
     "id": "adal",
@@ -4452,13 +4549,22 @@
     "response_type": "OpenAI",
     "url": "https://api.sylph.ai/v1/chat/completions",
     "models": "https://api.sylph.ai/v1/models",
-    "auth_methods": ["api_key"]
+    "auth_methods": [
+      "api_key"
+    ]
   },
   {
     "id": "xiaomi_mimo",
     "api_key_vars": "XIAOMI_MIMO_API_KEY",
     "url_param_vars": [
-      { "name": "CLUSTER", "options": ["token-plan-sgp.xiaomimimo.com", "token-plan-cn.xiaomimimo.com", "token-plan-ams.xiaomimimo.com"] }
+      {
+        "name": "CLUSTER",
+        "options": [
+          "token-plan-sgp.xiaomimimo.com",
+          "token-plan-cn.xiaomimimo.com",
+          "token-plan-ams.xiaomimimo.com"
+        ]
+      }
     ],
     "response_type": "OpenAI",
     "url": "https://{{#if CLUSTER}}{{CLUSTER}}{{else}}token-plan-sgp.xiaomimimo.com{{/if}}/v1/chat/completions",
@@ -4471,7 +4577,9 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text"]
+        "input_modalities": [
+          "text"
+        ]
       },
       {
         "id": "mimo-v2.5",
@@ -4481,7 +4589,9 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text"]
+        "input_modalities": [
+          "text"
+        ]
       },
       {
         "id": "mimo-v2-pro",
@@ -4491,7 +4601,9 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text"]
+        "input_modalities": [
+          "text"
+        ]
       },
       {
         "id": "mimo-v2-omni",
@@ -4501,10 +4613,15 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
-        "input_modalities": ["text", "image"]
+        "input_modalities": [
+          "text",
+          "image"
+        ]
       }
     ],
-    "auth_methods": ["api_key"]
+    "auth_methods": [
+      "api_key"
+    ]
   },
   {
     "id": "nvidia",
@@ -4513,6 +4630,168 @@
     "response_type": "OpenAI",
     "url": "https://integrate.api.nvidia.com/v1/chat/completions",
     "models": "https://integrate.api.nvidia.com/v1/models",
-    "auth_methods": ["api_key"]
+    "auth_methods": [
+      "api_key"
+    ]
+  },
+  {
+    "id": "neuralwatt",
+    "api_key_vars": "NEURALWATT_API_KEY",
+    "url_param_vars": [],
+    "response_type": "OpenAI",
+    "url": "https://api.neuralwatt.com/v1/chat/completions",
+    "models": [
+      {
+        "id": "qwen3.5-397b",
+        "name": "Qwen3.5 397B",
+        "description": "Qwen3.5 397B-A17B \u2014 quant-agnostic canonical name for the Qwen3.5 397B family.",
+        "context_length": 262128,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": [
+          "text"
+        ]
+      },
+      {
+        "id": "qwen3.5-397b-fast",
+        "name": "Qwen3.5 397B Fast",
+        "description": "Qwen3.5 397B with thinking mode disabled for faster, lower-latency responses. Ideal for straightforward tasks where extended reasoning is unnecessary.",
+        "context_length": 262128,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": false,
+        "input_modalities": [
+          "text"
+        ]
+      },
+      {
+        "id": "kimi-k2.7-code",
+        "name": "Kimi K2.7 Code",
+        "description": "Kimi K2.7 Code \u2014 quant-agnostic canonical name for the Kimi K2.7 Code family.",
+        "context_length": 262128,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": [
+          "text",
+          "image"
+        ]
+      },
+      {
+        "id": "kimi-k2.6",
+        "name": "Kimi K2.6",
+        "description": "Kimi K2.6 \u2014 quant-agnostic canonical name for the Kimi K2.6 family.",
+        "context_length": 262128,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": [
+          "text",
+          "image"
+        ]
+      },
+      {
+        "id": "kimi-k2.6-fast",
+        "name": "Kimi K2.6 Fast",
+        "description": "Moonshot Kimi K2.6 with thinking mode disabled for instant, lower-latency responses.",
+        "context_length": 262128,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": false,
+        "input_modalities": [
+          "text",
+          "image"
+        ]
+      },
+      {
+        "id": "qwen3.6-35b",
+        "name": "Qwen3.6 35B",
+        "description": "Qwen3.6 35B-A3B \u2014 quant-agnostic canonical name for the Qwen3.6 35B family.",
+        "context_length": 131056,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": [
+          "text",
+          "image"
+        ]
+      },
+      {
+        "id": "qwen3.6-35b-fast",
+        "name": "Qwen3.6 35B Fast",
+        "description": "Qwen3.6 35B with thinking mode disabled for instant responses. A lightweight, fast model for rapid iteration.",
+        "context_length": 131056,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": false,
+        "input_modalities": [
+          "text",
+          "image"
+        ]
+      },
+      {
+        "id": "glm-5.2",
+        "name": "GLM-5.2",
+        "description": "Private GLM-5.2 test canary",
+        "context_length": 1048560,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": [
+          "text"
+        ]
+      },
+      {
+        "id": "glm-5.2-fast",
+        "name": "GLM-5.2 (fast)",
+        "description": "GLM-5.2 with thinking skipped (reasoning_effort=none). Non-thinking tier, mirrors glm-5.1-fast.",
+        "context_length": 1048560,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": false,
+        "input_modalities": [
+          "text"
+        ]
+      },
+      {
+        "id": "glm-5.2-short",
+        "name": "GLM-5.2 (short)",
+        "description": "GLM-5.2 with a 200K context window and a bounded reasoning budget \u2014 faster, lower-energy serving for everyday coding, agentic, and chat workloads under 200K tokens. Private preview (grant-gated).",
+        "context_length": 199984,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": [
+          "text"
+        ]
+      },
+      {
+        "id": "glm-5.2-short-fast",
+        "name": "GLM-5.2 (short, fast)",
+        "description": "GLM-5.2 short with reasoning OFF \u2014 the fastest, lowest-energy variant of the 200K pool, for latency-sensitive coding, chat, and tool-use that does not need chain-of-thought. Private preview (grant-gated).",
+        "context_length": 199984,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": false,
+        "input_modalities": [
+          "text"
+        ]
+      }
+    ],
+    "auth_methods": [
+      "api_key"
+    ]
+  },
+  {
+    "id": "ambient",
+    "api_key_vars": "AMBIENT_API_KEY",
+    "url_param_vars": [],
+    "response_type": "OpenAI",
+    "url": "https://api.ambient.xyz/v1/chat/completions",
+    "models": "https://api.ambient.xyz/v1/models",
+    "auth_methods": [
+      "api_key"
+    ]
   }
 ]

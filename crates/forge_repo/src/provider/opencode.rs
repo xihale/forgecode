@@ -215,7 +215,7 @@ mod tests {
     use forge_app::{EnvironmentInfra, HttpInfra};
     use pretty_assertions::assert_eq;
     use reqwest::header::HeaderMap;
-    use reqwest_eventsource::EventSource;
+    use forge_eventsource::EventSource;
 
     use super::*;
     use crate::provider::mock_server::MockServer;
@@ -424,21 +424,21 @@ mod tests {
         let actual = repository.models(provider).await.unwrap();
         let expected = vec![
             fixture_model("claude-opus-4-7")
-                .context_length(Some(1_000_000))
-                .tools_supported(Some(true))
-                .supports_parallel_tool_calls(Some(true))
-                .supports_reasoning(Some(true))
+                .context_length(1_000_000)
+                .tools_supported(true)
+                .supports_parallel_tool_calls(true)
+                .supports_reasoning(true)
                 .input_modalities(vec![InputModality::Text, InputModality::Image]),
             fixture_model("claude-haiku-4-5")
-                .context_length(Some(200_000))
-                .tools_supported(Some(true))
-                .supports_parallel_tool_calls(Some(false))
-                .supports_reasoning(Some(true))
+                .context_length(200_000)
+                .tools_supported(true)
+                .supports_parallel_tool_calls(false)
+                .supports_reasoning(true)
                 .input_modalities(vec![InputModality::Text, InputModality::Image]),
             fixture_model("glm-5.1")
-                .tools_supported(Some(true))
-                .supports_parallel_tool_calls(Some(true))
-                .supports_reasoning(Some(true))
+                .tools_supported(true)
+                .supports_parallel_tool_calls(true)
+                .supports_reasoning(true)
                 .input_modalities(vec![InputModality::Text]),
         ];
 
@@ -450,9 +450,9 @@ mod tests {
         let repository = OpenCodeZenResponseRepository::new(Arc::new(MockInfra::new()));
         let fixture = vec![
             fixture_model("claude-opus-4-6")
-                .tools_supported(Some(true))
-                .supports_parallel_tool_calls(Some(true))
-                .supports_reasoning(Some(true))
+                .tools_supported(true)
+                .supports_parallel_tool_calls(true)
+                .supports_reasoning(true)
                 .input_modalities(vec![InputModality::Text, InputModality::Image]),
         ];
         let provider = create_provider(

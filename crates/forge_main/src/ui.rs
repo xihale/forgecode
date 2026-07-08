@@ -309,10 +309,6 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         let model = self.get_agent_model(Some(agent.id.clone())).await;
         self.update_model(model.clone());
 
-        // Sync the shared AgentState so the prompt renderer shows the correct
-        // agent name immediately on the next repaint.
-        self.console.set_agent(agent.id.clone());
-
         let name = agent.id.as_str().to_case(Case::UpperSnake).bold();
 
         let title = format!(
@@ -350,12 +346,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             state: UIState::new(env.clone()),
             api,
             new_api: Arc::new(f),
-            console: Console::new(
-                env.clone(),
-                config.custom_history_path.clone(),
-                command.clone(),
-                AgentId::default(),
-            ),
+            console: Console::new(env.clone(), config.custom_history_path.clone(), command.clone()),
             cli,
             command,
             spinner,
@@ -404,25 +395,14 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         if let Some(u) = usage {
             forge_prompt.usage(u);
         }
-        let context_length = self.get_context_length(model.as_ref()).await;
         if let Some(m) = model {
             forge_prompt.model(m);
         }
         if let Some(e) = reasoning_effort {
             forge_prompt.reasoning_effort(e);
         }
-        if let Ok(Some(effort)) = self.api.get_reasoning_effort().await {
-            forge_prompt.effort(effort);
-        }
 
-        if let Some(cl) = context_length {
-            forge_prompt.context_length(cl);
-        }
-
-        forge_prompt.effort_state(self.console.effort_state());
-        forge_prompt.agent_state(self.console.agent_state());
-
-        self.console.prompt(&mut forge_prompt, &self.api).await
+        self.console.prompt(&mut forge_prompt).await
     }
 
     pub async fn run(&mut self) {
@@ -604,7 +584,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                     ListCommand::Mcp => {
                         self.on_show_mcp_servers(porcelain).await?;
                     }
-                    ListCommand::Conversation => {
+                    ListCommand::Conversation { parent: _ } => {
                         self.on_show_conversations(porcelain).await?;
                     }
                     ListCommand::Cmd => {
@@ -1020,7 +1000,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
                             self.select_row_output("Command", query.clone(), rows)?;
                         }
                     }
-                    SelectCommand::Conversation { query } => {
+                    SelectCommand::Conversation { query, parent: _ } => {
                         let max_conversations = self.config.max_conversations;
                         let conversations =
                             self.api.get_conversations(Some(max_conversations)).await?;
@@ -2666,6 +2646,9 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
 
     async fn on_command(&mut self, command: AppCommand) -> anyhow::Result<bool> {
         match command {
+            AppCommand::ConversationTree => {
+                self.list_conversations().await?;
+            }
             AppCommand::Conversations { id } => {
                 if let Some(raw_id) = id {
                     let conversation_id = ConversationId::parse(&raw_id)

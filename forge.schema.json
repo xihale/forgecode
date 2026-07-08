@@ -15,6 +15,11 @@
         }
       ]
     },
+    "auto_install_vscode_extension": {
+      "description": "Enables automatic VS Code extension installation when Forge runs inside\nVS Code and the extension is not already installed.",
+      "type": "boolean",
+      "default": false
+    },
     "auto_open_dump": {
       "description": "Whether to automatically open HTML dump files in the browser after\ncreation.",
       "type": "boolean",
@@ -315,17 +320,17 @@
     "show_banner": {
       "description": "Whether to show the ASCII art banner at startup.\n\nWhen set to `false`, the entire ASCII art banner is hidden.\nDefaults to `true`.",
       "type": "boolean",
-      "default": true
+      "default": false
     },
     "show_hook_summary": {
       "description": "Whether to show the hook summary in the startup banner.\n\nWhen set to `false`, the hook summary (e.g. MCP server failures)\nis hidden from the banner.\nDefaults to `true`.",
       "type": "boolean",
-      "default": true
+      "default": false
     },
     "show_tips": {
       "description": "Whether to show tips and hints in the startup banner.\n\nWhen set to `false`, the version tips, command hints, and the\nzsh plugin encouragement message are hidden from the banner.\nDefaults to `true`.",
       "type": "boolean",
-      "default": true
+      "default": false
     },
     "subagents": {
       "description": "Enables subagent support via the task tool; when true the forge agent\ngains access to the `task` tool for delegating work to specialised\nsub-agents, and the `sage` research-only agent tool is removed.\nWhen false the `task` tool is disabled and `sage` is available instead.",
@@ -560,6 +565,45 @@
         }
       ]
     },
+    "Effort2": {
+      "oneOf": [
+        {
+          "description": "No reasoning; skips the thinking step entirely.",
+          "type": "string",
+          "const": "none"
+        },
+        {
+          "description": "Minimal reasoning; fastest and cheapest.",
+          "type": "string",
+          "const": "minimal"
+        },
+        {
+          "description": "Low reasoning effort.",
+          "type": "string",
+          "const": "low"
+        },
+        {
+          "description": "Medium reasoning effort; the default for most providers.",
+          "type": "string",
+          "const": "medium"
+        },
+        {
+          "description": "High reasoning effort.",
+          "type": "string",
+          "const": "high"
+        },
+        {
+          "description": "Extra-high reasoning effort (OpenAI / OpenRouter).",
+          "type": "string",
+          "const": "xhigh"
+        },
+        {
+          "description": "Maximum reasoning effort; only available on select Anthropic models.",
+          "type": "string",
+          "const": "max"
+        }
+      ]
+    },
     "HttpConfig": {
       "description": "HTTP client configuration.",
       "type": "object",
@@ -719,6 +763,16 @@
             "string",
             "null"
           ]
+        },
+        "supported_reasoning_efforts": {
+          "description": "Reasoning effort levels supported by the model (if applicable)",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/Effort2"
+          }
         },
         "supports_parallel_tool_calls": {
           "description": "Whether the model supports parallel tool calls",

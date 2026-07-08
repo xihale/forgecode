@@ -4,18 +4,11 @@ use std::path::PathBuf;
 
 use convert_case::{Case, Casing};
 use derive_setters::Setters;
-
 use forge_api::{AgentId, Effort, ModelId, Usage};
 use nu_ansi_term::{Color, Style};
-use reedline::{Prompt, PromptHistorySearchStatus};
-use std::sync::{Arc, Mutex};
 
 use crate::display_constants::markers;
-use crate::editor::{AgentState, EffortState};
 use crate::utils::humanize_number;
-
-// Constants
-const MULTILINE_INDICATOR: &str = "::: ";
 
 // Nerd font symbols — left prompt
 const DIR_SYMBOL: &str = "\u{ea83}"; // 󪃃  folder icon
@@ -30,6 +23,7 @@ const MODEL_SYMBOL: &str = "\u{ec19}";
 /// compact three-letter form (e.g. `MED`) to the full uppercase label
 /// (e.g. `MEDIUM`). Matches [`crate::zsh::rprompt`] so the CLI and zsh
 /// integration render identically on equivalent terminals.
+const WIDE_TERMINAL_THRESHOLD: usize = 100;
 
 /// Very Specialized Prompt for the Agent Chat
 #[derive(Clone, Setters)]
@@ -43,10 +37,6 @@ pub struct ForgePrompt {
     /// rendered to the right of the model when set. `Effort::None` is
     /// suppressed (see [`ForgePrompt::render_prompt_right`]).
     pub reasoning_effort: Option<Effort>,
-    pub context_length: Option<u64>,
-    pub effort: Option<Effort>,
-    pub effort_state: Option<Arc<Mutex<EffortState>>>,
-    pub agent_state: Option<Arc<Mutex<AgentState>>>,
     pub git_branch: Option<String>,
 }
 
@@ -61,10 +51,6 @@ impl ForgePrompt {
             agent_id,
             model: None,
             reasoning_effort: None,
-            context_length: None,
-            effort: None,
-            effort_state: None,
-            agent_state: None,
             git_branch,
         }
     }
@@ -74,10 +60,8 @@ impl ForgePrompt {
         self.git_branch = git_branch;
         self
     }
-}
 
-impl Prompt for ForgePrompt {
-    fn render_prompt_left(&self) -> Cow<'_, str> {
+    pub fn render_prompt_left(&self) -> Cow<'_, str> {
         // Left prompt layout:
         //
         //   AGENT_NAME  󪃃 dir   branch
@@ -129,7 +113,7 @@ impl Prompt for ForgePrompt {
         Cow::Owned(result)
     }
 
-    fn render_prompt_right(&self) -> Cow<'_, str> {
+    pub fn render_prompt_right(&self) -> Cow<'_, str> {
         // Right prompt layout: agent · tokens · cost · model
         // Active (tokens > 0): bright white for agent/tokens, green for cost
         // Inactive (no tokens): all segments dimmed
@@ -144,17 +128,10 @@ impl Prompt for ForgePrompt {
         };
         let mut result = String::with_capacity(64);
 
-        // Agent name with nerd font symbol — read current from AgentState
-        // for instant visual feedback when Ctrl+Q is pressed
-        let display_agent = self
-            .agent_state
-            .as_ref()
-            .and_then(|state| state.lock().ok())
-            .map(|s| s.current.clone())
-            .unwrap_or_else(|| self.agent_id.clone());
+        // Agent name with nerd font symbol
         let agent_str = format!(
             "{AGENT_SYMBOL} {}",
-            display_agent.as_str().to_case(Case::UpperSnake)
+            self.agent_id.as_str().to_case(Case::UpperSnake)
         );
         write!(
             result,
@@ -171,13 +148,7 @@ impl Prompt for ForgePrompt {
                 forge_api::TokenCount::Actual(_) => "",
                 forge_api::TokenCount::Approx(_) => "~",
             };
-            let mut count_str = format!("{}{}", prefix, humanize_number(*tokens));
-            if let Some(limit) = self.context_length
-                && limit > 0
-            {
-                let pct = (*tokens * 100).checked_div(limit as usize).unwrap_or(0);
-                count_str.push_str(&format!(" ({}%)", pct));
-            }
+            let count_str = format!("{}{}", prefix, humanize_number(*tokens));
             write!(
                 result,
                 " {}",
@@ -199,89 +170,40 @@ impl Prompt for ForgePrompt {
             .unwrap();
         }
 
-        // Reasoning effort
-        let (effort, supported_count) = if let Some(ref state) = self.effort_state {
-            let state = state.lock().ok();
-            (
-                state
-                    .as_ref()
-                    .and_then(|s| s.current.clone())
-                    .or(self.effort.clone()),
-                state.as_ref().map(|s| s.supported.len()),
-            )
-        } else {
-            (self.effort.clone(), None)
-        };
+        // Model with nerd font symbol
+        if let Some(model) = self.model.as_ref() {
+            let model_str = model.to_string();
+            let short_model = model_str.split('/').next_back().unwrap_or(model.as_str());
+            let model_label = format!("{MODEL_SYMBOL} {short_model}");
+            let color = if active {
+                Color::LightMagenta
+            } else {
+                Color::DarkGray
+            };
+            write!(result, " {}", Style::new().fg(color).paint(&model_label)).unwrap();
+        }
 
-        if let Some(ref effort) = effort
+        // Reasoning effort — rendered to the right of the model, matching the
+        // ZSH rprompt. `Effort::None` is suppressed (see zsh/rprompt.rs). On
+        // narrow terminals the label collapses to its first three characters
+        // so the prompt stays compact.
+        if let Some(ref effort) = self.reasoning_effort
             && !matches!(effort, Effort::None)
-            && supported_count.unwrap_or(2) > 1
         {
+            let effort_label = effort_label(effort, term_width());
             let color = if active {
                 Color::Yellow
             } else {
                 Color::DarkGray
             };
-            write!(
-                result,
-                " {}",
-                Style::new()
-                    .bold()
-                    .fg(color)
-                    .paint(format!("[{}]", effort.short_name()))
-            )
-            .unwrap();
-        }
-
-        // Model with nerd font symbol (always colored — it's a static config
-        // identifier, not conversation state)
-        if let Some(model) = self.model.as_ref() {
-            let model_str = model.to_string();
-            let short_model = model_str.split('/').next_back().unwrap_or(model.as_str());
-            let model_label = format!("{MODEL_SYMBOL} {short_model}");
-            write!(
-                result,
-                " {}",
-                Style::new().fg(Color::LightMagenta).paint(&model_label)
-            )
-            .unwrap();
+            write!(result, " {}", Style::new().fg(color).paint(&effort_label)).unwrap();
         }
 
         Cow::Owned(result)
     }
 
-    fn render_prompt_indicator(&self, _prompt_mode: reedline::PromptEditMode) -> Cow<'_, str> {
+    pub fn render_prompt_indicator(&self) -> Cow<'_, str> {
         Cow::Borrowed("")
-    }
-
-    fn render_prompt_multiline_indicator(&self) -> Cow<'_, str> {
-        Cow::Borrowed(MULTILINE_INDICATOR)
-    }
-
-    fn render_prompt_history_search_indicator(
-        &self,
-        history_search: reedline::PromptHistorySearch,
-    ) -> Cow<'_, str> {
-        let prefix = match history_search.status {
-            PromptHistorySearchStatus::Passing => "",
-            PromptHistorySearchStatus::Failing => "failing ",
-        };
-
-        let mut result = String::with_capacity(32);
-
-        // Handle empty search term more elegantly
-        if history_search.term.is_empty() {
-            write!(result, "({prefix}reverse-search) ").unwrap();
-        } else {
-            write!(
-                result,
-                "({}reverse-search: {}) ",
-                prefix, history_search.term
-            )
-            .unwrap();
-        }
-
-        Cow::Owned(Style::new().fg(Color::White).paint(&result).to_string())
     }
 }
 
@@ -292,6 +214,26 @@ fn get_git_branch() -> Option<String> {
     head.referent_name().map(|r| r.shorten().to_string())
 }
 
+/// Returns the current terminal width in columns, falling back to 80 when
+/// the size cannot be detected.
+fn term_width() -> usize {
+    terminal_size::terminal_size()
+        .map(|(w, _)| w.0 as usize)
+        .unwrap_or(80)
+}
+
+/// Formats an [`Effort`] as its uppercase label, collapsing to the first three
+/// characters on narrow terminals (< [`WIDE_TERMINAL_THRESHOLD`] columns).
+fn effort_label(effort: &Effort, width: usize) -> String {
+    let full = effort.to_string().to_uppercase();
+    if width >= WIDE_TERMINAL_THRESHOLD {
+        full
+    } else {
+        // `chars().take(3)` rather than `&full[..3]` to satisfy the
+        // `clippy::string_slice` lint denied in CI.
+        full.chars().take(3).collect()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -307,14 +249,43 @@ mod tests {
                 usage: None,
                 agent_id: AgentId::default(),
                 model: None,
-            reasoning_effort: None,
-            context_length: None,
-            effort: None,
-            effort_state: None,
-            agent_state: None,
+                reasoning_effort: None,
                 git_branch: None,
             }
         }
+    }
+
+    enum PromptHistorySearchStatus {
+        Passing,
+        Failing,
+    }
+
+    struct PromptHistorySearch {
+        status: PromptHistorySearchStatus,
+        term: String,
+    }
+
+    fn render_prompt_history_search_indicator(
+        history_search: PromptHistorySearch,
+    ) -> Cow<'static, str> {
+        let prefix = match history_search.status {
+            PromptHistorySearchStatus::Passing => "",
+            PromptHistorySearchStatus::Failing => "failing ",
+        };
+
+        let mut result = String::with_capacity(32);
+        if history_search.term.is_empty() {
+            write!(result, "({prefix}reverse-search) ").unwrap();
+        } else {
+            write!(
+                result,
+                "({}reverse-search: {}) ",
+                prefix, history_search.term
+            )
+            .unwrap();
+        }
+
+        Cow::Owned(Style::new().fg(Color::White).paint(&result).to_string())
     }
 
     #[test]
@@ -374,21 +345,12 @@ mod tests {
     }
 
     #[test]
-    fn test_render_prompt_multiline_indicator() {
-        let prompt = ForgePrompt::default();
-        let actual = prompt.render_prompt_multiline_indicator();
-        let expected = MULTILINE_INDICATOR;
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
     fn test_render_prompt_history_search_indicator_passing() {
-        let prompt = ForgePrompt::default();
-        let history_search = reedline::PromptHistorySearch {
+        let history_search = PromptHistorySearch {
             status: PromptHistorySearchStatus::Passing,
             term: "test".to_string(),
         };
-        let actual = prompt.render_prompt_history_search_indicator(history_search);
+        let actual = render_prompt_history_search_indicator(history_search);
         let expected = Style::new()
             .fg(Color::White)
             .paint("(reverse-search: test) ")
@@ -398,12 +360,11 @@ mod tests {
 
     #[test]
     fn test_render_prompt_history_search_indicator_failing() {
-        let prompt = ForgePrompt::default();
-        let history_search = reedline::PromptHistorySearch {
+        let history_search = PromptHistorySearch {
             status: PromptHistorySearchStatus::Failing,
             term: "test".to_string(),
         };
-        let actual = prompt.render_prompt_history_search_indicator(history_search);
+        let actual = render_prompt_history_search_indicator(history_search);
         let expected = Style::new()
             .fg(Color::White)
             .paint("(failing reverse-search: test) ")
@@ -413,12 +374,11 @@ mod tests {
 
     #[test]
     fn test_render_prompt_history_search_indicator_empty_term() {
-        let prompt = ForgePrompt::default();
-        let history_search = reedline::PromptHistorySearch {
+        let history_search = PromptHistorySearch {
             status: PromptHistorySearchStatus::Passing,
             term: "".to_string(),
         };
-        let actual = prompt.render_prompt_history_search_indicator(history_search);
+        let actual = render_prompt_history_search_indicator(history_search);
         let expected = Style::new()
             .fg(Color::White)
             .paint("(reverse-search) ")
@@ -461,5 +421,35 @@ mod tests {
         assert!(actual.contains("1.5k"));
     }
 
+    #[test]
+    fn test_render_prompt_right_with_reasoning_effort() {
+        // When reasoning effort is set, its uppercase label appears after the
+        // model segment.
+        let mut prompt = ForgePrompt::default();
+        let _ = prompt.model(ModelId::new("gpt-4"));
+        let _ = prompt.reasoning_effort(Effort::High);
 
+        let actual = prompt.render_prompt_right();
+        assert!(actual.contains("HIGH") || actual.contains("HIG"));
+    }
+
+    #[test]
+    fn test_render_prompt_right_hides_effort_none() {
+        // `Effort::None` carries no useful info — it must not be rendered.
+        let mut prompt = ForgePrompt::default();
+        let _ = prompt.model(ModelId::new("gpt-4"));
+        let _ = prompt.reasoning_effort(Effort::None);
+
+        let actual = prompt.render_prompt_right();
+        assert!(!actual.to_uppercase().contains("NONE"));
+    }
+
+    #[test]
+    fn test_effort_label_narrow_vs_wide() {
+        assert_eq!(effort_label(&Effort::Medium, 80), "MED");
+        assert_eq!(
+            effort_label(&Effort::Medium, WIDE_TERMINAL_THRESHOLD),
+            "MEDIUM"
+        );
+    }
 }
