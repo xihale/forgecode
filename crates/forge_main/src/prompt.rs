@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::fmt::Write;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use convert_case::{Case, Casing};
 use derive_setters::Setters;
@@ -8,6 +9,7 @@ use forge_api::{AgentId, Effort, ModelId, Usage};
 use nu_ansi_term::{Color, Style};
 
 use crate::display_constants::markers;
+use crate::editor::{AgentState, EffortState};
 use crate::utils::humanize_number;
 
 // Nerd font symbols — left prompt
@@ -37,7 +39,18 @@ pub struct ForgePrompt {
     /// rendered to the right of the model when set. `Effort::None` is
     /// suppressed (see [`ForgePrompt::render_prompt_right`]).
     pub reasoning_effort: Option<Effort>,
+    /// Shared effort state cycled by Ctrl+T in the editor. When set, its
+    /// `current` takes precedence over `reasoning_effort` for rendering so the
+    /// prompt reflects the in-editor selection immediately.
+    pub effort_state: Option<Arc<Mutex<EffortState>>>,
+    /// Fallback effort (read from the API) used when `effort_state` is unset.
+    pub effort: Option<Effort>,
+    /// Shared agent state cycled by Ctrl+Q in the editor.
+    pub agent_state: Option<Arc<Mutex<AgentState>>>,
     pub git_branch: Option<String>,
+    /// Context window length for the active model, used to render the
+    /// token-usage percentage (e.g. `47k (23%)`) in the right prompt.
+    pub context_length: Option<u64>,
 }
 
 impl ForgePrompt {
@@ -51,7 +64,11 @@ impl ForgePrompt {
             agent_id,
             model: None,
             reasoning_effort: None,
+            effort_state: None,
+            effort: None,
+            agent_state: None,
             git_branch,
+            context_length: None,
         }
     }
 
@@ -128,10 +145,17 @@ impl ForgePrompt {
         };
         let mut result = String::with_capacity(64);
 
-        // Agent name with nerd font symbol
+        // Agent name — read the current agent from the shared AgentState when
+        // available (Ctrl+Q may have cycled it since the prompt was built).
+        let agent_id = self
+            .agent_state
+            .as_ref()
+            .and_then(|s| s.lock().ok())
+            .map(|s| s.current.clone())
+            .unwrap_or_else(|| self.agent_id.clone());
         let agent_str = format!(
             "{AGENT_SYMBOL} {}",
-            self.agent_id.as_str().to_case(Case::UpperSnake)
+            agent_id.as_str().to_case(Case::UpperSnake)
         );
         write!(
             result,
@@ -140,7 +164,9 @@ impl ForgePrompt {
         )
         .unwrap();
 
-        // Token count (only shown when active)
+        // Token count with context-window usage percentage (only when active).
+        // e.g. `47k (23%)` — the percentage is shown only when a context
+        // length is known and the usage is non-zero.
         if let Some(tokens) = total_tokens
             && active
         {
@@ -148,7 +174,12 @@ impl ForgePrompt {
                 forge_api::TokenCount::Actual(_) => "",
                 forge_api::TokenCount::Approx(_) => "~",
             };
-            let count_str = format!("{}{}", prefix, humanize_number(*tokens));
+            let used = *tokens;
+            let pct = self.context_length.filter(|cl| *cl > 0).map(|cl| {
+                let p = (used as u64).min(cl) * 100 / cl;
+                format!(" ({p}%)")
+            });
+            let count_str = format!("{}{}{}", prefix, humanize_number(used), pct.as_deref().unwrap_or(""));
             write!(
                 result,
                 " {}",
@@ -187,8 +218,27 @@ impl ForgePrompt {
         // ZSH rprompt. `Effort::None` is suppressed (see zsh/rprompt.rs). On
         // narrow terminals the label collapses to its first three characters
         // so the prompt stays compact.
-        if let Some(ref effort) = self.reasoning_effort
+        //
+        // When `effort_state` is set (editor Ctrl+T cycling), its `current`
+        // takes precedence over the API-sourced `reasoning_effort`/`effort`,
+        // and the label is only shown when more than one effort level is
+        // supported (otherwise cycling is meaningless).
+        let (effort, supported_count) = if let Some(ref state) = self.effort_state {
+            let state = state.lock().ok();
+            (
+                state
+                    .as_ref()
+                    .and_then(|s| s.current.clone())
+                    .or_else(|| self.effort.clone().or(self.reasoning_effort.clone())),
+                state.as_ref().map(|s| s.supported.len()),
+            )
+        } else {
+            (self.effort.clone().or(self.reasoning_effort.clone()), None)
+        };
+
+        if let Some(ref effort) = effort
             && !matches!(effort, Effort::None)
+            && supported_count.unwrap_or(2) > 1
         {
             let effort_label = effort_label(effort, term_width());
             let color = if active {
@@ -222,17 +272,12 @@ fn term_width() -> usize {
         .unwrap_or(80)
 }
 
-/// Formats an [`Effort`] as its uppercase label, collapsing to the first three
-/// characters on narrow terminals (< [`WIDE_TERMINAL_THRESHOLD`] columns).
-fn effort_label(effort: &Effort, width: usize) -> String {
-    let full = effort.to_string().to_uppercase();
-    if width >= WIDE_TERMINAL_THRESHOLD {
-        full
-    } else {
-        // `chars().take(3)` rather than `&full[..3]` to satisfy the
-        // `clippy::string_slice` lint denied in CI.
-        full.chars().take(3).collect()
-    }
+/// Formats an [`Effort`] as a bracketed short label (e.g. `[M]`, `[XH]`),
+/// matching the compact right-prompt style. `width` is accepted for
+/// signature compatibility with callers but does not change the output —
+/// the bracketed short form is used on all terminal widths.
+fn effort_label(effort: &Effort, _width: usize) -> String {
+    format!("[{}]", effort.short_name())
 }
 
 #[cfg(test)]
@@ -248,9 +293,13 @@ mod tests {
                 cwd: PathBuf::from("."),
                 usage: None,
                 agent_id: AgentId::default(),
-                model: None,
-                reasoning_effort: None,
-                git_branch: None,
+            model: None,
+            reasoning_effort: None,
+            effort_state: None,
+            effort: None,
+            agent_state: None,
+            git_branch: None,
+            context_length: None,
             }
         }
     }
@@ -422,15 +471,36 @@ mod tests {
     }
 
     #[test]
+    fn test_render_prompt_right_token_usage_percentage() {
+        // `47k (23%)` — percentage shown when context_length is set.
+        let usage = Usage {
+            total_tokens: forge_api::TokenCount::Actual(47_000),
+            ..Default::default()
+        };
+        let mut prompt = ForgePrompt::default();
+        let _ = prompt.usage(usage).context_length(200_000);
+
+        let actual = prompt.render_prompt_right();
+        assert!(actual.contains("47k"));
+        assert!(actual.contains("(23%)"));
+
+        // Without a context length the percentage is suppressed.
+        let mut prompt = ForgePrompt::default();
+        let _ = prompt.usage(usage);
+        let actual = prompt.render_prompt_right();
+        assert!(!actual.contains("%"));
+    }
+
+    #[test]
     fn test_render_prompt_right_with_reasoning_effort() {
-        // When reasoning effort is set, its uppercase label appears after the
-        // model segment.
+        // When reasoning effort is set, its bracketed short label appears
+        // after the model segment.
         let mut prompt = ForgePrompt::default();
         let _ = prompt.model(ModelId::new("gpt-4"));
         let _ = prompt.reasoning_effort(Effort::High);
 
         let actual = prompt.render_prompt_right();
-        assert!(actual.contains("HIGH") || actual.contains("HIG"));
+        assert!(actual.contains("[H]"));
     }
 
     #[test]
@@ -446,10 +516,9 @@ mod tests {
 
     #[test]
     fn test_effort_label_narrow_vs_wide() {
-        assert_eq!(effort_label(&Effort::Medium, 80), "MED");
-        assert_eq!(
-            effort_label(&Effort::Medium, WIDE_TERMINAL_THRESHOLD),
-            "MEDIUM"
-        );
+        // Bracketed short form on all widths.
+        assert_eq!(effort_label(&Effort::Medium, 80), "[M]");
+        assert_eq!(effort_label(&Effort::Medium, WIDE_TERMINAL_THRESHOLD), "[M]");
+        assert_eq!(effort_label(&Effort::XHigh, 80), "[XH]");
     }
 }

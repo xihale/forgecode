@@ -237,22 +237,6 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         Some(resolved.unwrap_or(Self::DEFAULT_CONTEXT_WINDOW))
     }
 
-    /// Resolves model and context length in a single call.
-    ///
-    /// Returns `(model_id, context_length)`. Caches the context length so
-    /// that transient `get_models()` failures do not cause the display to
-    /// disappear.
-    async fn get_model_with_context_length(&mut self) -> (Option<ModelId>, Option<u64>) {
-        let agent = self.api.get_active_agent().await;
-        let model = self.get_agent_model(agent).await;
-        let context_length = self.get_context_length(model.as_ref()).await;
-        // Update the cache whenever we get a fresh value
-        if context_length.is_some() {
-            self.cached_context_length = context_length;
-        }
-        (model, context_length.or(self.cached_context_length))
-    }
-
     /// Displays banner only if user is in interactive mode and show_banner is enabled.
     fn display_banner(&self) -> Result<()> {
         if self.cli.is_interactive() && self.config.show_banner {
@@ -309,6 +293,10 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         let model = self.get_agent_model(Some(agent.id.clone())).await;
         self.update_model(model.clone());
 
+        // Sync the shared AgentState so the prompt renderer shows the correct
+        // agent name immediately on the next repaint.
+        self.console.set_agent(agent.id.clone());
+
         let name = agent.id.as_str().to_case(Case::UpperSnake).bold();
 
         let title = format!(
@@ -346,7 +334,12 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             state: UIState::new(env.clone()),
             api,
             new_api: Arc::new(f),
-            console: Console::new(env.clone(), config.custom_history_path.clone(), command.clone()),
+            console: Console::new(
+                env.clone(),
+                config.custom_history_path.clone(),
+                command.clone(),
+                AgentId::default(),
+            ),
             cli,
             command,
             spinner,
@@ -391,6 +384,7 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
             .get_agent_model(self.api.get_active_agent().await)
             .await;
         let reasoning_effort = self.api.get_reasoning_effort().await.ok().flatten();
+        let context_length = self.get_context_length(model.as_ref()).await;
         let mut forge_prompt = ForgePrompt::new(self.state.cwd.clone(), agent_id);
         if let Some(u) = usage {
             forge_prompt.usage(u);
@@ -401,8 +395,13 @@ impl<A: API + ConsoleWriter + 'static, F: Fn(ForgeConfig) -> A + Send + Sync> UI
         if let Some(e) = reasoning_effort {
             forge_prompt.reasoning_effort(e);
         }
+        if let Some(cl) = context_length {
+            forge_prompt.context_length(cl);
+        }
+        forge_prompt.effort_state(self.console.effort_state());
+        forge_prompt.agent_state(self.console.agent_state());
 
-        self.console.prompt(&mut forge_prompt).await
+        self.console.prompt(&mut forge_prompt, &self.api).await
     }
 
     pub async fn run(&mut self) {
