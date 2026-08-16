@@ -1300,6 +1300,16 @@
     "url": "https://api.z.ai/api/coding/paas/v4/chat/completions",
     "models": [
       {
+        "id": "glm-5.3",
+        "name": "GLM-5.3",
+        "description": "Latest flagship model built on the GLM-5.2 base with major post-training advances in complex software engineering and agent tasks — 50% better coding performance, open-source SOTA on Terminal-Bench 3.0, 1M context window and 128K maximum output",
+        "context_length": 1000000,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "input_modalities": ["text"]
+      },
+      {
         "id": "glm-5.2",
         "name": "GLM-5.2",
         "description": "New flagship model with powerful coding capabilities, 1M context support, and continued strengths in long-horizon tasks",

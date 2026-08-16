@@ -1073,6 +1073,41 @@ mod tests {
     }
 
     #[test]
+    fn test_zai_coding_config() {
+        let configs = get_provider_configs();
+        let config = configs
+            .iter()
+            .find(|c| c.id == ProviderId::ZAI_CODING)
+            .unwrap();
+        assert_eq!(config.id, ProviderId::ZAI_CODING);
+        assert_eq!(
+            config.api_key_vars,
+            Some("ZAI_CODING_API_KEY".to_string())
+        );
+        assert!(config.url_param_vars.is_empty());
+        assert_eq!(config.response_type, Some(ProviderResponse::OpenAI));
+        assert_eq!(
+            config.url.as_str(),
+            "https://api.z.ai/api/coding/paas/v4/chat/completions"
+        );
+        // GLM-5.3 is available to Coding Plan users first; the general API
+        // is still rolling out, so it is hardcoded under zai_coding only.
+        match config.models.as_ref().expect("models should be present") {
+            Models::Hardcoded(models) => {
+                assert!(
+                    models.iter().any(|m| m.id.as_str() == "glm-5.3"),
+                    "expected glm-5.3 to be present in hardcoded models"
+                );
+                assert!(
+                    models.iter().any(|m| m.id.as_str() == "glm-5.2"),
+                    "expected glm-5.2 to be present in hardcoded models"
+                );
+            }
+            other => panic!("expected hardcoded models, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_moonshot_config() {
         let configs = get_provider_configs();
         let config = configs
