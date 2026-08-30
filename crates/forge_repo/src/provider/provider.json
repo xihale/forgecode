@@ -1307,7 +1307,19 @@
         "tools_supported": true,
         "supports_parallel_tool_calls": true,
         "supports_reasoning": true,
+        "supported_reasoning_efforts": ["low", "high", "max"],
         "input_modalities": ["text"]
+      },
+      {
+        "id": "glm-5.3-flash",
+        "name": "GLM-5.3 Flash",
+        "description": "First native multimodal model in the GLM-5 series with a highly efficient hybrid architecture (320B total, 18B activated parameters) — vision is built into the coding loop for UI, browser, and GUI tasks, outperforming GLM-5.2 at a fraction of the cost, with 1M context window and 128K maximum output",
+        "context_length": 1000000,
+        "tools_supported": true,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning": true,
+        "supported_reasoning_efforts": ["low", "high", "max"],
+        "input_modalities": ["text", "image"]
       },
       {
         "id": "glm-5.2",

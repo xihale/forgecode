@@ -668,7 +668,7 @@ impl<
 
 #[cfg(test)]
 mod tests {
-    use forge_app::domain::{AuthMethod, ProviderResponse};
+    use forge_app::domain::{AuthMethod, Effort, InputModality, ProviderResponse};
     use pretty_assertions::assert_eq;
 
     use super::*;
@@ -1101,6 +1101,21 @@ mod tests {
                 assert!(
                     models.iter().any(|m| m.id.as_str() == "glm-5.2"),
                     "expected glm-5.2 to be present in hardcoded models"
+                );
+                let actual = models
+                    .iter()
+                    .find(|m| m.id.as_str() == "glm-5.3-flash")
+                    .expect("expected glm-5.3-flash to be present in hardcoded models");
+                let expected = vec![InputModality::Text, InputModality::Image];
+                assert_eq!(actual.input_modalities, expected);
+                // GLM-5.3 models accept low/high/max reasoning_effort only;
+                // "medium" is not a valid value for them.
+                let expected = vec![Effort::Low, Effort::High, Effort::Max];
+                assert_eq!(
+                    actual.supported_reasoning_efforts.clone().expect(
+                        "expected glm-5.3-flash to declare supported reasoning efforts"
+                    ),
+                    expected
                 );
             }
             other => panic!("expected hardcoded models, got {other:?}"),
